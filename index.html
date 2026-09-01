@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Roster Scratch Planner</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div id="app" class="app-shell" aria-live="polite"></div>
+
+    <input id="plan-file-input" class="visually-hidden" type="file" accept="application/json,.json">
+    <input id="palette-file-input" class="visually-hidden" type="file" accept="application/json,.json">
+    <input id="staff-file-input" class="visually-hidden" type="file" accept=".txt,.csv,text/plain,text/csv">
+    <input id="shift-file-input" class="visually-hidden" type="file" accept=".txt,.csv,text/plain,text/csv">
+
+    <script src="src/parser.js"></script>
+    <script src="src/model.js"></script>
+    <script src="src/history.js"></script>
+    <script src="src/validation.js"></script>
+    <script src="src/storage.js"></script>
+    <script src="src/export.js"></script>
+    <script src="src/dragdrop.js"></script>
+    <script src="src/fixtures.js"></script>
+    <script src="src/render.js"></script>
+    <script src="src/app.js"></script>
+  </body>
+</html>
