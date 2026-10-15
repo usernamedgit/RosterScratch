@@ -52,6 +52,48 @@ function testParserExamples() {
   assert.equal(call.call.enabled, true);
 }
 
+function testInlineEditorsAndDialogs() {
+  assert.equal(Parser.describeEntry("8 GEN ED (+call)").text, "0800–1600 · 8h · GEN · ED · +call");
+  assert.equal(Parser.describeEntry("RDO").text, "Marker: RDO");
+  assert.equal(Parser.describeEntry("hello").tone, "warn");
+  assert.equal(Parser.describeEntry("").tone, "muted");
+
+  const plan = Model.createPlan({ dateStart: "2026-07-06", dateEnd: "2026-07-12", staffNames: ["Alex"] });
+  const pattern = Model.addPalettePattern(plan, "Split", ["8 GEN; On call", "", "12 GEN"]);
+  assert.deepEqual(pattern.items, [
+    { dayOffset: 0, text: "8 GEN" },
+    { dayOffset: 0, text: "On call" },
+    { dayOffset: 2, text: "12 GEN" }
+  ]);
+  Model.updatePalettePattern(plan, pattern.id, "Renamed", ["4 GEN"]);
+  assert.equal(pattern.name, "Renamed");
+  assert.deepEqual(pattern.items, [{ dayOffset: 0, text: "4 GEN" }]);
+
+  const item = Model.addItemFromText(plan, plan.staff[0].id, "2026-07-06", "8 GEN ED");
+  const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
+  const baseState = { plan, validation: Validation.validatePlan(plan), canUndo: false, canRedo: false };
+
+  Render.render(root, Object.assign({}, baseState, { editItem: { id: item.id, text: "8 GEN ED" } }), {});
+  assert.ok(root.innerHTML.includes('data-editor="item"'));
+  assert.ok(!root.innerHTML.includes('data-item-id="' + item.id + '"'), "an item being edited is not draggable");
+
+  const shiftId = plan.palette.savedShifts[0].id;
+  Render.render(root, Object.assign({}, baseState, { paletteOpen: true, paletteEdit: { section: "savedShifts", id: shiftId, text: "7 MRI" } }), {});
+  assert.ok(root.innerHTML.includes('data-editor="palette"'));
+  assert.ok(root.innerHTML.includes("0700–1500 · 8h · MRI"));
+  Render.render(root, Object.assign({}, baseState, { paletteOpen: true, paletteEdit: { section: "markers", id: null, text: "Course" } }), {});
+  assert.ok(root.innerHTML.includes("Custom marker; placed in cells as a note"));
+
+  Render.render(root, Object.assign({}, baseState, { modal: { type: "pattern", id: null, name: "Run", items: ["8 GEN", ""], error: "" } }), {});
+  assert.ok(root.innerHTML.includes("New pattern"));
+  assert.equal((root.innerHTML.match(/data-field="pattern-day"/g) || []).length, 2);
+
+  Render.render(root, Object.assign({}, baseState, { modal: { type: "new-plan", name: "X", dateStart: "2026-07-06", dateEnd: "2026-07-12", keepStaff: true, error: "Bad dates" } }), {});
+  assert.ok(root.innerHTML.includes('type="date" data-field="new-plan-start"'));
+  assert.ok(root.innerHTML.includes("Keep the current 1 staff"));
+  assert.ok(root.innerHTML.includes("Bad dates"));
+}
+
 function testPolishFixes() {
   const early = Parser.parseRosterText("0300 CT", "2026-07-06");
   assert.equal(early.label, "0300 CT");
@@ -778,6 +820,7 @@ function testStorageAndCsv() {
 
 testParserExamples();
 testPolishFixes();
+testInlineEditorsAndDialogs();
 testModalityDistributionUsesWorkedWeekdayShifts();
 testModelHistory();
 testRemoveOnCall();

@@ -27,6 +27,7 @@
     var previousScrollTop = previousGridWrap ? previousGridWrap.scrollTop : 0;
     var previousScrollLeft = previousGridWrap ? previousGridWrap.scrollLeft : 0;
     var previousViewKey = previousGridWrap ? previousGridWrap.dataset.viewKey : "";
+    var previousFocus = captureFocus(root);
     latestRoot = root;
     latestPlan = plan;
     root.innerHTML = [
@@ -42,6 +43,71 @@
     restoreGridScroll(root, previousScrollTop, previousScrollLeft, previousViewKey);
     bindResizeWatcher();
     wire(root, state, actions);
+    restoreFocus(root, previousFocus, state);
+  }
+
+  function captureFocus(root) {
+    var doc = root.ownerDocument;
+    var active = doc && doc.activeElement;
+    if (!active || !active.dataset || !active.dataset.focusKey || !root.contains(active)) {
+      return null;
+    }
+    return {
+      key: active.dataset.focusKey,
+      start: typeof active.selectionStart === "number" ? active.selectionStart : null,
+      end: typeof active.selectionEnd === "number" ? active.selectionEnd : null
+    };
+  }
+
+  function findFocusTarget(root, key) {
+    var matches = root.querySelectorAll("[data-focus-key]");
+    for (var index = 0; index < matches.length; index += 1) {
+      if (matches[index].dataset.focusKey === key) {
+        return matches[index];
+      }
+    }
+    return null;
+  }
+
+  function restoreFocus(root, previous, state) {
+    if (state.pendingFocus) {
+      var pending = findFocusTarget(root, state.pendingFocus);
+      state.pendingFocus = null;
+      if (pending) {
+        pending.focus();
+        if (typeof pending.select === "function" && pending.type !== "date") {
+          pending.select();
+        }
+        return;
+      }
+    }
+    if (!previous) {
+      return;
+    }
+    var target = findFocusTarget(root, previous.key);
+    if (!target) {
+      return;
+    }
+    target.focus();
+    if (previous.start != null && typeof target.setSelectionRange === "function" && target.type !== "date") {
+      try {
+        target.setSelectionRange(previous.start, previous.end);
+      } catch (ignore) {}
+    }
+  }
+
+  function describeForSection(text, section) {
+    var described = Parser.describeEntry(text);
+    if (section === "markers" && described.tone === "warn" && Parser.parseRosterText(text).kind === "note") {
+      return { tone: "muted", text: "Custom marker; placed in cells as a note" };
+    }
+    return described;
+  }
+
+  function renderEntryPreview(text, section) {
+    var preview = describeForSection(text, section);
+    return "<span class=\"entry-preview tone-" + attr(preview.tone) + "\" data-preview data-section=\"" + attr(section || "") +
+      "\" aria-live=\"polite\">" + escapeHtml(preview.text) + "</span>";
   }
 
   function renderCommandBar(plan, state) {
@@ -95,10 +161,10 @@
       renderPaletteGroupButton("start", "Start time", state) +
       "<button class=\"icon-button palette-close\" data-action=\"close-palette\" title=\"Close palette\">X</button>" +
       "</div>" +
-      renderPaletteSection("Saved shifts", "savedShifts", plan.palette.savedShifts, "shift", true, getPaletteGroupBy(state)) +
-      renderPaletteSection("Session shifts", "sessionShifts", plan.palette.sessionShifts, "session", false, getPaletteGroupBy(state)) +
+      renderPaletteSection("Saved shifts", "savedShifts", plan.palette.savedShifts, "shift", true, getPaletteGroupBy(state), state) +
+      renderPaletteSection("Session shifts", "sessionShifts", plan.palette.sessionShifts, "session", false, getPaletteGroupBy(state), state) +
       renderPatternSection(plan.palette.patterns) +
-      renderPaletteSection("Markers", "markers", plan.palette.markers, "marker", true) +
+      renderPaletteSection("Markers", "markers", plan.palette.markers, "marker", true, null, state) +
       "</section>";
   }
 
@@ -108,30 +174,45 @@
       escapeHtml(label) + "</button>";
   }
 
-  function renderPaletteSection(title, section, items, kind, addButton, groupBy) {
-    var chips = items.length ? renderPaletteItems(section, items, kind, groupBy) : "<span class=\"empty-note\">Empty</span>";
+  function renderPaletteSection(title, section, items, kind, addButton, groupBy, state) {
+    var edit = state && state.paletteEdit && state.paletteEdit.section === section ? state.paletteEdit : null;
+    var adding = edit && edit.id == null ? renderPaletteEditor(section, kind, edit.text) : "";
+    var chips = items.length ? renderPaletteItems(section, items, kind, groupBy, edit) : (adding ? "" : "<span class=\"empty-note\">Empty</span>");
+    chips += adding;
     var add = addButton ? "<button class=\"chip-action\" data-action=\"add-palette\" data-section=\"" + attr(section) + "\" title=\"Add\">+</button>" : "";
     return "<div class=\"palette-section\"><div class=\"palette-heading\"><span>" + escapeHtml(title) + "</span>" + add + "</div>" +
       "<div class=\"palette-list\">" + chips + "</div></div>";
   }
 
-  function renderPaletteItems(section, items, kind, groupBy) {
+  function renderPaletteItems(section, items, kind, groupBy, edit) {
     if (section !== "savedShifts" && section !== "sessionShifts") {
       return items.map(function (entry) {
-        return renderPaletteChip(section, entry, kind);
+        return renderPaletteChip(section, entry, kind, edit);
       }).join("");
     }
     return groupPaletteShifts(items, groupBy).map(function (group) {
       return "<div class=\"palette-subgroup\">" +
         "<div class=\"palette-subheading\">" + escapeHtml(group.label) + "</div>" +
         "<div class=\"palette-sublist\">" + group.items.map(function (entry) {
-          return renderPaletteChip(section, entry, kind);
+          return renderPaletteChip(section, entry, kind, edit);
         }).join("") + "</div>" +
         "</div>";
     }).join("");
   }
 
-  function renderPaletteChip(section, entry, kind) {
+  function renderPaletteEditor(section, kind, text) {
+    var label = section === "markers" ? "Marker text" : "Shift text";
+    return "<span class=\"palette-chip palette-chip-editing " + kind + "\">" +
+      "<input class=\"palette-editor\" data-editor=\"palette\" data-focus-key=\"palette-editor\" value=\"" + attr(text) +
+      "\" aria-label=\"" + label + "\" placeholder=\"" + (section === "markers" ? "Training" : "8 GEN ED") +
+      "\" title=\"Enter to save, Escape to cancel\">" +
+      renderEntryPreview(text, section) + "</span>";
+  }
+
+  function renderPaletteChip(section, entry, kind, edit) {
+      if (edit && edit.id === entry.id) {
+        return renderPaletteEditor(section, kind, edit.text);
+      }
       var promote = section === "sessionShifts" ? "<button class=\"chip-action\" data-action=\"promote-session\" data-id=\"" + attr(entry.id) + "\" title=\"Promote\">+</button>" : "";
       return "<span class=\"palette-chip " + kind + "\" draggable=\"true\" data-drag-type=\"" + dragTypeFor(section) +
         "\" data-id=\"" + attr(entry.id) + "\" data-text=\"" + attr(entry.text || entry.label) + "\">" +
@@ -323,7 +404,7 @@
     return "<th class=\"staff-cell\" data-staff-focus-target=\"true\" data-staff-id=\"" + attr(staff.id) +
       "\" aria-label=\"" + attr((focused ? "Disable focus for " : "Focus row for ") + staff.name) +
       "\" title=\"Click the surrounding cell to " + (focused ? "disable row focus" : "focus this row") + "\"><div class=\"staff-row\">" +
-      "<input class=\"staff-name\" data-action=\"rename-staff\" data-staff-id=\"" + attr(staff.id) + "\" value=\"" + attr(staff.name) + "\" aria-label=\"Staff name\">" +
+      "<input class=\"staff-name\" data-action=\"rename-staff\" data-focus-key=\"staff-name-" + attr(staff.id) + "\" data-staff-id=\"" + attr(staff.id) + "\" value=\"" + attr(staff.name) + "\" aria-label=\"Staff name\">" +
       "<button class=\"icon-button\" data-action=\"staff-up\" data-staff-id=\"" + attr(staff.id) + "\" title=\"Move up\" " + disabled(index === 0) + ">^</button>" +
       "<button class=\"icon-button\" data-action=\"staff-down\" data-staff-id=\"" + attr(staff.id) + "\" title=\"Move down\" " + disabled(index === total - 1) + ">v</button>" +
       "<button class=\"icon-button\" data-action=\"delete-staff\" data-staff-id=\"" + attr(staff.id) + "\" title=\"Delete staff\">X</button>" +
@@ -371,6 +452,11 @@
   }
 
   function renderItem(item, state, warnings, locked) {
+    if (state.editItem && state.editItem.id === item.id && !locked) {
+      return "<span class=\"item-pill item-pill-editing " + attr(item.kind || "note") + "\">" +
+        "<input class=\"item-editor\" data-editor=\"item\" data-focus-key=\"item-editor\" value=\"" + attr(state.editItem.text) +
+        "\" aria-label=\"Edit item\" title=\"" + attr(Parser.describeEntry(state.editItem.text).text + "\nEnter to save, Escape to cancel, clear to delete") + "\"></span>";
+    }
     var selectedGroup = state.selectedGroupId && item.groupId === state.selectedGroupId;
     var removeCall = item.call && item.call.enabled && !item.onCallOnly && item.kind !== "call";
     var actionDisabled = locked ? " disabled aria-disabled=\"true\"" : "";
@@ -412,6 +498,12 @@
     if (modal.type === "distribution") {
       return renderDistributionModal(plan);
     }
+    if (modal.type === "pattern") {
+      return renderPatternModal(modal);
+    }
+    if (modal.type === "new-plan") {
+      return renderNewPlanModal(plan, modal);
+    }
     if (modal.type === "staff-import") {
       return "<div class=\"modal-backdrop\"><section class=\"modal\" role=\"dialog\" aria-modal=\"true\">" +
         "<header><h2>Import Staff</h2><button class=\"icon-button\" data-action=\"close-modal\">X</button></header>" +
@@ -429,6 +521,48 @@
         "</section></div>";
     }
     return "";
+  }
+
+  function renderPatternModal(modal) {
+    var days = modal.items.map(function (text, index) {
+      var day = "Day " + (index + 1);
+      return "<li class=\"pattern-day\"><span class=\"pattern-day-label\">" + day + "</span>" +
+        "<input data-field=\"pattern-day\" data-index=\"" + index + "\" data-focus-key=\"pattern-day-" + index + "\" value=\"" + attr(text) +
+        "\" aria-label=\"" + day + "\" placeholder=\"Leave blank for a day off\">" +
+        renderEntryPreview(text) +
+        "<button class=\"icon-button\" data-action=\"remove-pattern-day\" data-index=\"" + index + "\" title=\"Remove " + day +
+        "\" aria-label=\"Remove " + day + "\"" + (modal.items.length === 1 ? " disabled" : "") + ">X</button></li>";
+    }).join("");
+    var title = modal.id ? "Edit pattern" : "New pattern";
+    return "<div class=\"modal-backdrop\"><section class=\"modal pattern-modal\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"pattern-title\">" +
+      "<header><h2 id=\"pattern-title\">" + title + "</h2><button class=\"icon-button\" data-action=\"close-modal\" title=\"Close\" aria-label=\"Close\">X</button></header>" +
+      "<div class=\"modal-body\">" +
+      "<label class=\"modal-field\"><span>Name</span><input data-field=\"pattern-name\" data-focus-key=\"pattern-name\" value=\"" + attr(modal.name) + "\" placeholder=\"GEN call run\"></label>" +
+      "<ol class=\"pattern-days\">" + days + "</ol>" +
+      "<div class=\"pattern-actions\"><button class=\"text-button\" data-action=\"add-pattern-day\">Add day</button>" +
+      "<span class=\"field-hint\">Enter moves to the next day. Leave a day blank for a gap; use ; for two entries on one day.</span></div>" +
+      (modal.error ? "<p class=\"field-error\" role=\"alert\">" + escapeHtml(modal.error) + "</p>" : "") +
+      "</div>" +
+      "<footer><button class=\"text-button\" data-action=\"close-modal\">Cancel</button><button class=\"text-button primary-button\" data-action=\"save-pattern\">Save pattern</button></footer>" +
+      "</section></div>";
+  }
+
+  function renderNewPlanModal(plan, modal) {
+    var staffCount = plan.staff.length;
+    return "<div class=\"modal-backdrop\"><section class=\"modal new-plan-modal\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"new-plan-title\">" +
+      "<header><h2 id=\"new-plan-title\">New plan</h2><button class=\"icon-button\" data-action=\"close-modal\" title=\"Close\" aria-label=\"Close\">X</button></header>" +
+      "<div class=\"modal-body\">" +
+      "<label class=\"modal-field\"><span>Name</span><input data-field=\"new-plan-name\" data-focus-key=\"new-plan-name\" value=\"" + attr(modal.name) + "\"></label>" +
+      "<div class=\"modal-field-row\">" +
+      "<label class=\"modal-field\"><span>Start date</span><input type=\"date\" data-field=\"new-plan-start\" data-focus-key=\"new-plan-start\" value=\"" + attr(modal.dateStart) + "\"></label>" +
+      "<label class=\"modal-field\"><span>End date</span><input type=\"date\" data-field=\"new-plan-end\" data-focus-key=\"new-plan-end\" value=\"" + attr(modal.dateEnd) + "\"></label>" +
+      "</div>" +
+      (staffCount ? "<label class=\"modal-check\"><input type=\"checkbox\" data-field=\"new-plan-keep-staff\"" + (modal.keepStaff ? " checked" : "") + "> Keep the current " + staffCount + " staff</label>" : "") +
+      "<p class=\"field-hint\">This replaces the current plan. Undo brings it back.</p>" +
+      (modal.error ? "<p class=\"field-error\" role=\"alert\">" + escapeHtml(modal.error) + "</p>" : "") +
+      "</div>" +
+      "<footer><button class=\"text-button\" data-action=\"close-modal\">Cancel</button><button class=\"text-button primary-button\" data-action=\"create-new-plan\">Create plan</button></footer>" +
+      "</section></div>";
   }
 
   function renderHelpModal() {
@@ -694,10 +828,133 @@
           actions.cancelCellEditor();
         }
       });
+      editor.addEventListener("input", function () {
+        if (state.editCell) {
+          state.editCell.text = editor.value;
+        }
+      });
       editor.addEventListener("blur", function () {
         actions.commitCellEditor(editor.value);
       });
     }
+
+    wireInlineEditor(root.querySelector("[data-editor='item']"), {
+      onInput: function (value) {
+        if (state.editItem) {
+          state.editItem.text = value;
+        }
+      },
+      commit: actions.commitItemEditor,
+      cancel: actions.cancelItemEditor
+    });
+    wireInlineEditor(root.querySelector("[data-editor='palette']"), {
+      onInput: function (value) {
+        if (state.paletteEdit) {
+          state.paletteEdit.text = value;
+        }
+      },
+      commit: actions.commitPaletteEditor,
+      cancel: actions.cancelPaletteEditor
+    });
+    wireModalFields(root, state, actions);
+  }
+
+  function wireInlineEditor(input, handlers) {
+    if (!input) {
+      return;
+    }
+    var done = false;
+    var preview = input.parentNode.querySelector("[data-preview]");
+    ["click", "dblclick", "mousedown"].forEach(function (type) {
+      input.addEventListener(type, function (event) { event.stopPropagation(); });
+    });
+    input.addEventListener("input", function () {
+      handlers.onInput(input.value);
+      if (preview) {
+        updatePreview(preview, input.value);
+      } else {
+        input.title = Parser.describeEntry(input.value).text + "\nEnter to save, Escape to cancel, clear to delete";
+      }
+    });
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        done = true;
+        handlers.commit(input.value);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        done = true;
+        handlers.cancel();
+      }
+    });
+    input.addEventListener("blur", function () {
+      if (!done) {
+        done = true;
+        handlers.commit(input.value);
+      }
+    });
+  }
+
+  function updatePreview(preview, text) {
+    var described = describeForSection(text, preview.dataset.section);
+    preview.className = "entry-preview tone-" + described.tone;
+    preview.textContent = described.text;
+  }
+
+  function wireModalFields(root, state, actions) {
+    var modal = state.modal;
+    var dialog = root.querySelector(".modal");
+    if (!modal || !dialog) {
+      return;
+    }
+    dialog.querySelectorAll("input").forEach(function (input) {
+      input.addEventListener("input", function () {
+        var field = input.dataset.field;
+        if (field === "pattern-name") {
+          modal.name = input.value;
+        } else if (field === "pattern-day") {
+          modal.items[Number(input.dataset.index)] = input.value;
+          var preview = input.parentNode.querySelector("[data-preview]");
+          if (preview) {
+            updatePreview(preview, input.value);
+          }
+        } else if (field === "new-plan-name") {
+          modal.name = input.value;
+        } else if (field === "new-plan-start") {
+          modal.dateStart = input.value;
+        } else if (field === "new-plan-end") {
+          modal.dateEnd = input.value;
+        }
+      });
+      input.addEventListener("change", function () {
+        if (input.dataset.field === "new-plan-keep-staff") {
+          modal.keepStaff = input.checked;
+        }
+      });
+      input.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          actions.closeModal();
+          return;
+        }
+        if (event.key !== "Enter" || input.type === "checkbox") {
+          return;
+        }
+        event.preventDefault();
+        if (modal.type === "new-plan") {
+          actions.createNewPlan();
+        } else if (modal.type === "pattern") {
+          if (event.metaKey || event.ctrlKey) {
+            actions.savePattern();
+          } else {
+            var index = input.dataset.field === "pattern-name" ? -1 : Number(input.dataset.index);
+            actions.nextPatternDay(index);
+          }
+        }
+      });
+    });
   }
 
   function updatePaletteDragPosition(root, event) {
@@ -765,6 +1022,10 @@
     "add-pattern": function (element, state, actions) { actions.addPattern(); },
     "edit-pattern": function (element, state, actions) { actions.editPattern(element.dataset.id); },
     "close-modal": function (element, state, actions) { actions.closeModal(); },
+    "add-pattern-day": function (element, state, actions) { actions.nextPatternDay(-2); },
+    "remove-pattern-day": function (element, state, actions) { actions.removePatternDay(Number(element.dataset.index)); },
+    "save-pattern": function (element, state, actions) { actions.savePattern(); },
+    "create-new-plan": function (element, state, actions) { actions.createNewPlan(); },
     "choose-staff-file": function (element, state, actions) { actions.chooseStaffFile(); },
     "choose-shift-file": function (element, state, actions) { actions.chooseShiftFile(); },
     "apply-staff-import": function (element, state, actions) {

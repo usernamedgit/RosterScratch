@@ -1453,3 +1453,141 @@ textarea:focus {
     color: #111;
   }
 }
+
+.item-pill-editing {
+  padding: 0;
+  cursor: text;
+  border-color: var(--accent);
+}
+
+.item-editor {
+  width: 100%;
+  min-width: 0;
+  height: 21px;
+  padding: 1px 5px;
+  border: 0;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.palette-chip-editing {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 220px;
+  cursor: auto;
+  border-color: var(--accent);
+}
+
+.palette-editor {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+.entry-preview {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.entry-preview.tone-good {
+  color: var(--good);
+}
+
+.entry-preview.tone-warn {
+  color: var(--warn);
+}
+
+.modal-field {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.modal-field input {
+  height: 34px;
+  padding: 0 10px;
+  color: var(--text);
+}
+
+.modal-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.modal-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.field-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.field-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.primary-button {
+  border-color: rgba(0, 217, 255, 0.6);
+  background: rgba(0, 217, 255, 0.16);
+}
+
+.pattern-days {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.pattern-day {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 34px;
+  grid-template-areas:
+    "label input remove"
+    ". preview .";
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+}
+
+.pattern-day-label {
+  grid-area: label;
+  color: var(--accent-3);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pattern-day input {
+  grid-area: input;
+  height: 32px;
+  padding: 0 10px;
+}
+
+.pattern-day .entry-preview {
+  grid-area: preview;
+}
+
+.pattern-day .icon-button {
+  grid-area: remove;
+}
+
+.pattern-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
