@@ -24,6 +24,9 @@
     selectedGroupId: null,
     focusedStaffId: null,
     editCell: null,
+    editItem: null,
+    paletteEdit: null,
+    pendingFocus: null,
     dragPreview: null,
     modal: null,
     paletteOpen: false,
@@ -82,6 +85,8 @@
     selectItem: selectItem,
     beginItemDrag: beginItemDrag,
     editItem: editItem,
+    commitItemEditor: commitItemEditor,
+    cancelItemEditor: cancelItemEditor,
     deleteItem: deleteItem,
     removeCall: removeCall,
     dropOnCell: dropOnCell,
@@ -89,10 +94,16 @@
     clearPreview: clearPreview,
     promoteSession: promoteSession,
     editPalette: editPalette,
+    commitPaletteEditor: commitPaletteEditor,
+    cancelPaletteEditor: cancelPaletteEditor,
     deletePalette: deletePalette,
     addPalette: addPalette,
     addPattern: addPattern,
     editPattern: editPattern,
+    nextPatternDay: nextPatternDay,
+    removePatternDay: removePatternDay,
+    savePattern: savePattern,
+    createNewPlan: createNewPlan,
     setPaletteGroupBy: setPaletteGroupBy
   };
 
@@ -203,6 +214,10 @@
     state.selectedGroupId = selected && selected.groupId ? selected.groupId : null;
     if (state.editCell && Model.isCellLocked(state.plan, state.editCell.staffId, state.editCell.date)) {
       state.editCell = null;
+    }
+    var editingItem = state.editItem ? Model.getItem(state.plan, state.editItem.id) : null;
+    if (state.editItem && (!editingItem || Model.isCellLocked(state.plan, editingItem.staffId, editingItem.date))) {
+      state.editItem = null;
     }
     if (state.focusedStaffId && !Model.getStaff(state.plan, state.focusedStaffId)) {
       state.focusedStaffId = null;
@@ -386,12 +401,9 @@
   }
 
   function addStaff() {
-    var name = prompt("Staff name", "New staff");
-    if (name == null) {
-      return;
-    }
     history.execute("Add staff", function (plan) {
-      Model.addStaff(plan, name);
+      var staff = Model.addStaff(plan, "New staff");
+      state.pendingFocus = "staff-name-" + staff.id;
     });
   }
 
@@ -474,36 +486,49 @@
   }
 
   function newPlan() {
-    if (!confirm("Create a new scratch plan? Undo can bring back the current one.")) {
-      return;
-    }
-    var dateStart = prompt("Start date (YYYY-MM-DD)", state.plan.dateStart);
-    if (dateStart == null) {
-      return;
-    }
-    var dateEnd = prompt("End date (YYYY-MM-DD)", state.plan.dateEnd);
-    if (dateEnd == null) {
-      return;
-    }
-    dateStart = dateStart.trim() || state.plan.dateStart;
-    dateEnd = dateEnd.trim() || state.plan.dateEnd;
-    if (!Model.isDateKey(dateStart) || !Model.isDateKey(dateEnd)) {
-      showToast("Enter dates as YYYY-MM-DD.");
-      return;
-    }
-    if (dateStart > dateEnd) {
-      showToast("Start date must be before end date.");
-      return;
-    }
-    var names = state.plan.staff.map(function (staff) { return staff.name; });
-    var next = Model.createPlan({
+    state.modal = {
+      type: "new-plan",
       name: "Scratch roster",
-      dateStart: dateStart,
-      dateEnd: dateEnd,
-      staffNames: names
+      dateStart: state.plan.dateStart,
+      dateEnd: state.plan.dateEnd,
+      keepStaff: true,
+      error: ""
+    };
+    state.paletteOpen = false;
+    state.summaryDate = null;
+    state.pendingFocus = "new-plan-start";
+    render();
+  }
+
+  function createNewPlan() {
+    var modal = state.modal;
+    if (!modal || modal.type !== "new-plan") {
+      return;
+    }
+    var error = "";
+    if (!Model.isDateKey(modal.dateStart) || !Model.isDateKey(modal.dateEnd)) {
+      error = "Choose a start and end date.";
+    } else if (modal.dateStart > modal.dateEnd) {
+      error = "The end date must be on or after the start date.";
+    }
+    if (error) {
+      modal.error = error;
+      render();
+      return;
+    }
+    var next = Model.createPlan({
+      name: Parser.normalizeText(modal.name) || "Scratch roster",
+      dateStart: modal.dateStart,
+      dateEnd: modal.dateEnd,
+      staffNames: modal.keepStaff ? state.plan.staff.map(function (staff) { return staff.name; }) : []
     });
+    state.modal = null;
+    state.selectedCell = null;
+    state.selectedItemId = null;
+    state.editCell = null;
+    state.editItem = null;
     history.replace("New plan", next);
-    showToast("New plan created.");
+    showToast("New plan created. Undo brings back the previous one.");
   }
 
   function savePlan() {
@@ -633,8 +658,31 @@
     if (guardLockedCell(item.staffId, item.date)) {
       return;
     }
-    var text = prompt("Edit item", item.raw || item.label);
-    if (text == null) {
+    state.selectedItemId = itemId;
+    state.selectedGroupId = item.groupId || null;
+    state.selectedCell = { staffId: item.staffId, date: item.date };
+    state.editCell = null;
+    state.editItem = { id: itemId, text: item.raw || item.label };
+    state.pendingFocus = "item-editor";
+    render();
+  }
+
+  function commitItemEditor(text) {
+    if (!state.editItem) {
+      return;
+    }
+    var itemId = state.editItem.id;
+    state.editItem = null;
+    var item = Model.getItem(state.plan, itemId);
+    if (!item || guardLockedCell(item.staffId, item.date)) {
+      render();
+      return;
+    }
+    if (!Parser.normalizeText(text)) {
+      state.selectedItemId = null;
+      history.execute("Delete item", function (plan) {
+        Model.removeItem(plan, itemId);
+      });
       return;
     }
     history.execute("Edit item", function (plan) {
@@ -644,6 +692,11 @@
         Model.addSessionShift(plan, text);
       }
     });
+  }
+
+  function cancelItemEditor() {
+    state.editItem = null;
+    render();
   }
 
   function deleteItem(itemId) {
@@ -797,16 +850,43 @@
       editPattern(id);
       return;
     }
-    var text = prompt("Palette text", entry.text || entry.label);
-    if (text == null) {
+    state.paletteEdit = { section: section, id: id, text: entry.text || entry.label || "" };
+    state.pendingFocus = "palette-editor";
+    render();
+  }
+
+  function commitPaletteEditor(text) {
+    var edit = state.paletteEdit;
+    if (!edit) {
+      return;
+    }
+    state.paletteEdit = null;
+    var normalized = Parser.normalizeText(text);
+    if (!normalized) {
+      render();
+      return;
+    }
+    if (edit.id == null) {
+      history.execute("Add palette item", function (plan) {
+        if (edit.section === "markers") {
+          Model.addPaletteMarker(plan, normalized);
+        } else {
+          Model.addPaletteShift(plan, normalized);
+        }
+      });
       return;
     }
     history.execute("Edit palette item", function (plan) {
-      Model.updatePaletteEntry(plan, section, id, {
-        text: Parser.normalizeText(text),
-        label: Parser.normalizeText(text)
+      Model.updatePaletteEntry(plan, edit.section, edit.id, {
+        text: normalized,
+        label: normalized
       });
     });
+  }
+
+  function cancelPaletteEditor() {
+    state.paletteEdit = null;
+    render();
   }
 
   function deletePalette(section, id) {
@@ -819,31 +899,13 @@
   }
 
   function addPalette(section) {
-    var text = prompt(section === "markers" ? "Marker text" : "Shift text", section === "markers" ? "Training" : "8 GEN ED");
-    if (text == null) {
-      return;
-    }
-    history.execute("Add palette item", function (plan) {
-      if (section === "markers") {
-        Model.addPaletteMarker(plan, text);
-      } else {
-        Model.addPaletteShift(plan, text);
-      }
-    });
+    state.paletteEdit = { section: section, id: null, text: "" };
+    state.pendingFocus = "palette-editor";
+    render();
   }
 
   function addPattern() {
-    var name = prompt("Pattern name", "New pattern");
-    if (name == null) {
-      return;
-    }
-    var text = prompt("Pattern items separated by commas", "8 GEN ED (+call), 4 GEN, 3 GEN, 12 GEN");
-    if (text == null) {
-      return;
-    }
-    history.execute("Add pattern", function (plan) {
-      Model.addPalettePattern(plan, name, text.split(","));
-    });
+    openPatternModal(null, "", [""]);
   }
 
   function editPattern(id) {
@@ -851,21 +913,66 @@
     if (!pattern) {
       return;
     }
-    var name = prompt("Pattern name", pattern.name);
-    if (name == null) {
+    var items = [];
+    pattern.items.forEach(function (entry) {
+      var offset = Math.max(0, entry.dayOffset || 0);
+      while (items.length <= offset) {
+        items.push("");
+      }
+      items[offset] = items[offset] ? items[offset] + "; " + entry.text : entry.text;
+    });
+    openPatternModal(id, pattern.name, items.length ? items : [""]);
+  }
+
+  function openPatternModal(id, name, items) {
+    state.modal = { type: "pattern", id: id, name: name, items: items, error: "" };
+    state.pendingFocus = "pattern-name";
+    render();
+  }
+
+  function nextPatternDay(fromIndex) {
+    var modal = state.modal;
+    if (!modal || modal.type !== "pattern") {
       return;
     }
-    var text = prompt("Pattern items separated by commas", pattern.items.map(function (entry) { return entry.text; }).join(", "));
-    if (text == null) {
+    var target = fromIndex === -2 ? modal.items.length : fromIndex + 1;
+    if (target >= modal.items.length) {
+      if (fromIndex >= 0 && !Parser.normalizeText(modal.items[fromIndex])) {
+        return;
+      }
+      modal.items.push("");
+    }
+    state.pendingFocus = "pattern-day-" + target;
+    render();
+  }
+
+  function removePatternDay(index) {
+    var modal = state.modal;
+    if (!modal || modal.type !== "pattern" || modal.items.length <= 1) {
       return;
     }
-    history.execute("Edit pattern", function (plan) {
-      var target = plan.palette.patterns.find(function (entry) { return entry.id === id; });
-      if (target) {
-        target.name = Parser.normalizeText(name);
-        target.items = text.split(",").map(function (entry, index) {
-          return { dayOffset: index, text: Parser.normalizeText(entry) };
-        }).filter(function (entry) { return entry.text; });
+    modal.items.splice(index, 1);
+    state.pendingFocus = "pattern-day-" + Math.min(index, modal.items.length - 1);
+    render();
+  }
+
+  function savePattern() {
+    var modal = state.modal;
+    if (!modal || modal.type !== "pattern") {
+      return;
+    }
+    if (!modal.items.some(function (text) { return Parser.normalizeText(text); })) {
+      modal.error = "Add at least one day to the pattern.";
+      render();
+      return;
+    }
+    var name = Parser.normalizeText(modal.name) || "New pattern";
+    state.modal = null;
+    history.execute(modal.id ? "Edit pattern" : "Add pattern", function (plan) {
+      if (modal.id) {
+        Model.updatePalettePattern(plan, modal.id, name, modal.items);
+      } else {
+        Model.addPalettePattern(plan, name, modal.items);
       }
     });
   }

@@ -345,8 +345,39 @@
     return lines.join("\n");
   }
 
+  function describeEntry(text) {
+    var parsed = parseRosterText(text, "2000-01-01");
+    if (parsed.kind === "empty") {
+      return { tone: "muted", text: "Type a shift, marker or note" };
+    }
+    if (parsed.kind === "invalid") {
+      return { tone: "warn", text: "Add a modality after the time, or it saves as a note" };
+    }
+    if (parsed.kind === "note") {
+      return { tone: "warn", text: "No time or marker recognised; saves as a note" };
+    }
+    var parts = [];
+    if (parsed.startTime && parsed.endTime) {
+      parts.push(parsed.startTime.text + "–" + parsed.endTime.text);
+      parts.push(formatDuration(parsed.durationHours));
+    }
+    if (parsed.kind === "shift") {
+      parts.push(parsed.modality);
+      if (parsed.location) {
+        parts.push(parsed.location);
+      }
+    } else {
+      parts.push(parsed.onCallOnly ? "On call" : "Marker: " + parsed.marker);
+    }
+    if (parsed.kind === "shift" && parsed.call && parsed.call.enabled) {
+      parts.push("+call");
+    }
+    return { tone: "good", text: parts.join(" · ") };
+  }
+
   return {
     KNOWN_MARKERS: KNOWN_MARKERS,
+    describeEntry: describeEntry,
     normalizeText: normalizeText,
     markerFor: markerFor,
     parseTimeToken: parseTimeToken,

@@ -675,11 +675,30 @@
       id: createId(plan, "pattern"),
       type: "pattern",
       name: Parser.normalizeText(name),
-      items: (itemTexts || []).map(function (entry, index) {
-        return { dayOffset: index, text: Parser.normalizeText(entry) };
-      }).filter(function (entry) { return entry.text; })
+      items: patternItemsFromDays(itemTexts)
     };
     plan.palette.patterns.push(pattern);
+    touch(plan);
+    return pattern;
+  }
+
+  function patternItemsFromDays(dayTexts) {
+    var items = [];
+    (dayTexts || []).forEach(function (dayText, index) {
+      splitEntries(dayText).forEach(function (entry) {
+        items.push({ dayOffset: index, text: Parser.normalizeText(entry) });
+      });
+    });
+    return items;
+  }
+
+  function updatePalettePattern(plan, id, name, itemTexts) {
+    var pattern = plan.palette.patterns.find(function (entry) { return entry.id === id; });
+    if (!pattern) {
+      return null;
+    }
+    pattern.name = Parser.normalizeText(name) || pattern.name;
+    pattern.items = patternItemsFromDays(itemTexts);
     touch(plan);
     return pattern;
   }
@@ -824,6 +843,7 @@
     addPaletteShift: addPaletteShift,
     addPaletteMarker: addPaletteMarker,
     addPalettePattern: addPalettePattern,
+    updatePalettePattern: updatePalettePattern,
     updatePaletteEntry: updatePaletteEntry,
     removePaletteEntry: removePaletteEntry,
     setDateRange: setDateRange,
