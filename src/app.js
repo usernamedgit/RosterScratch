@@ -474,11 +474,23 @@
   }
 
   function newPlan() {
-    if (!confirm("Create a new scratch plan? Unsaved changes should be saved first.")) {
+    if (!confirm("Create a new scratch plan? Undo can bring back the current one.")) {
       return;
     }
-    var dateStart = prompt("Start date", state.plan.dateStart) || state.plan.dateStart;
-    var dateEnd = prompt("End date", state.plan.dateEnd) || state.plan.dateEnd;
+    var dateStart = prompt("Start date (YYYY-MM-DD)", state.plan.dateStart);
+    if (dateStart == null) {
+      return;
+    }
+    var dateEnd = prompt("End date (YYYY-MM-DD)", state.plan.dateEnd);
+    if (dateEnd == null) {
+      return;
+    }
+    dateStart = dateStart.trim() || state.plan.dateStart;
+    dateEnd = dateEnd.trim() || state.plan.dateEnd;
+    if (!Model.isDateKey(dateStart) || !Model.isDateKey(dateEnd)) {
+      showToast("Enter dates as YYYY-MM-DD.");
+      return;
+    }
     if (dateStart > dateEnd) {
       showToast("Start date must be before end date.");
       return;
@@ -491,7 +503,6 @@
       staffNames: names
     });
     history.replace("New plan", next);
-    history.clear();
     showToast("New plan created.");
   }
 
@@ -862,6 +873,10 @@
   function handleKeydown(event) {
     var target = event.target;
     var isTextField = target && (["INPUT", "TEXTAREA", "SELECT"].indexOf(target.tagName) !== -1 || target.isContentEditable);
+    if (isTextField && (event.metaKey || event.ctrlKey) && ["z", "y"].indexOf(event.key.toLowerCase()) !== -1) {
+      // Leave text undo to the browser while typing; plan undo would discard the edit in progress.
+      return;
+    }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
       if (event.shiftKey) {
@@ -946,9 +961,10 @@
   }
 
   function fileName(name, extension) {
-    return String(name || "roster")
+    var slug = String(name || "")
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "") + extension;
+      .replace(/^-|-$/g, "");
+    return (slug || "roster") + extension;
   }
 })(typeof globalThis !== "undefined" ? globalThis : this);

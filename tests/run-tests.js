@@ -52,6 +52,29 @@ function testParserExamples() {
   assert.equal(call.call.enabled, true);
 }
 
+function testPolishFixes() {
+  const early = Parser.parseRosterText("0300 CT", "2026-07-06");
+  assert.equal(early.label, "0300 CT");
+  assert.equal(Parser.parseRosterText(early.label, "2026-07-06").startTime.text, "0300");
+  assert.equal(Parser.parseRosterText("3 CT", "2026-07-06").label, "3 CT");
+  assert.equal(Parser.parseRosterText("8 GEN ED", "2026-07-06").label, "8 GEN ED");
+  assert.deepEqual(Parser.parseRosterText("RDO", "2026-07-06").call, { enabled: false });
+  assert.equal(Parser.formatDuration(7.999), "8h");
+
+  const plan = Model.createPlan({ dateStart: "2026-07-06", dateEnd: "2026-07-12", staffNames: ["A"] });
+  const staffId = plan.staff[0].id;
+  for (let index = 0; index < 8; index += 1) {
+    Model.addItemFromText(plan, staffId, "2026-07-07", "note " + index);
+  }
+  Model.replaceCellFromText(plan, staffId, "2026-07-06", "first; second");
+  assert.deepEqual(Model.getCellItems(plan, staffId, "2026-07-06").map((item) => item.label), ["first", "second"]);
+
+  assert.equal(Model.isDateKey("2026-07-06"), true);
+  assert.equal(Model.isDateKey("2026-02-30"), false);
+  assert.equal(Model.isDateKey("06/07/2026"), false);
+
+}
+
 function testModalityDistributionUsesWorkedWeekdayShifts() {
   const plan = Model.createPlan({
     dateStart: "2026-07-06",
@@ -754,6 +777,7 @@ function testStorageAndCsv() {
 }
 
 testParserExamples();
+testPolishFixes();
 testModalityDistributionUsesWorkedWeekdayShifts();
 testModelHistory();
 testRemoveOnCall();

@@ -14,7 +14,17 @@
   }
 
   function todayKey() {
-    return new Date().toISOString().slice(0, 10);
+    var now = new Date();
+    return now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+  }
+
+  function compareIds(a, b) {
+    return String(a).localeCompare(String(b), undefined, { numeric: true });
+  }
+
+  function isDateKey(value) {
+    var text = String(value || "");
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) && keyFromDate(dateFromKey(text)) === text;
   }
 
   function dateFromKey(dateKey) {
@@ -254,7 +264,7 @@
   function getCellItems(plan, staffId, dateKey) {
     return plan.items
       .filter(function (item) { return item.staffId === staffId && item.date === dateKey; })
-      .sort(function (a, b) { return String(a.id).localeCompare(String(b.id)); });
+      .sort(function (a, b) { return compareIds(a.id, b.id); });
   }
 
   function cellLockKey(staffId, dateKey) {
@@ -303,7 +313,7 @@
       .filter(function (item) { return item.groupId === groupId; })
       .sort(function (a, b) {
         if (a.date === b.date) {
-          return String(a.id).localeCompare(String(b.id));
+          return compareIds(a.id, b.id);
         }
         return a.date.localeCompare(b.date);
       });
@@ -774,6 +784,8 @@
   return {
     SCHEMA_VERSION: SCHEMA_VERSION,
     clone: clone,
+    compareIds: compareIds,
+    isDateKey: isDateKey,
     createPlan: createPlan,
     normalizePlan: normalizePlan,
     createId: createId,

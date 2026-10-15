@@ -168,7 +168,7 @@
         return startDifference;
       }
       var staffDifference = staffSort(plan, a.staffId) - staffSort(plan, b.staffId);
-      return staffDifference || String(a.id).localeCompare(String(b.id));
+      return staffDifference || Model.compareIds(a.id, b.id);
     });
     var date = new Date(dateKey + "T00:00:00Z");
     var title = date.toLocaleDateString("en-AU", {
@@ -402,7 +402,7 @@
     var list = issues.length ? issues.slice(0, 12).map(function (issue) {
       return "<span class=\"issue-pill\" title=\"" + attr(issue.message) + "\">" + escapeHtml(issue.message) + "</span>";
     }).join("") : "<span class=\"empty-note\">No warnings</span>";
-    return "<aside class=\"issue-strip\"><div class=\"issue-count\">" + issues.length + " warnings</div><div class=\"issue-list\">" + list + "</div></aside>";
+    return "<aside class=\"issue-strip\"><div class=\"issue-count\">" + issues.length + (issues.length === 1 ? " warning" : " warnings") + "</div><div class=\"issue-list\">" + list + "</div></aside>";
   }
 
   function renderModal(plan, modal) {

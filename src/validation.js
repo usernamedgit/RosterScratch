@@ -18,10 +18,8 @@
 
   function formatGap(hours) {
     var sign = hours < 0 ? "-" : "";
-    var absolute = Math.abs(hours);
-    var whole = Math.floor(absolute);
-    var minutes = Math.round((absolute - whole) * 60);
-    return sign + whole + "h " + minutes + "m";
+    var totalMinutes = Math.round(Math.abs(hours) * 60);
+    return sign + Math.floor(totalMinutes / 60) + "h " + (totalMinutes % 60) + "m";
   }
 
   function isPrimaryShift(item) {
@@ -36,7 +34,6 @@
     function addIssue(issue) {
       issue.id = "issue_" + issueIndex++;
       issues.push(issue);
-      issue.itemIds.forEach(function () {});
       var key = cellKey(issue.staffId, issue.date);
       if (!byCell[key]) {
         byCell[key] = [];
