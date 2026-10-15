@@ -19,6 +19,7 @@
   var latestRoot = null;
   var latestPlan = null;
   var resizeWatcherBound = false;
+  var scaleReadoutTimer = 0;
 
   function render(root, state, actions) {
     var plan = state.plan;
@@ -326,7 +327,7 @@
     if (viewMode === "full") {
       return "<section class=\"date-view-toolbar\" aria-label=\"Date view controls\">" +
         modeButtons +
-        "<span class=\"date-view-context\">" + allDates.length + (allDates.length === 1 ? " day" : " days") + " · Scroll sideways to view the full period</span>" +
+        "<span class=\"date-view-context\">" + allDates.length + (allDates.length === 1 ? " day" : " days") + " · Scaled to fit the window</span>" +
         renderDistributionButton() +
         "</section>";
     }
@@ -1215,6 +1216,7 @@
       if (latestRoot && latestPlan) {
         syncCommandBarSizing(latestRoot);
         syncGridSizing(latestRoot, latestPlan);
+        showScaleReadout(latestRoot);
       }
     });
   }
@@ -1249,8 +1251,37 @@
     var availableWidth = Math.max(0, gridWrap.clientWidth - horizontalPadding - STAFF_COLUMN_WIDTH);
     var fillWidth = dateCount ? Math.floor(availableWidth / dateCount) : minCellWidth;
     var cellWidth = Math.max(minCellWidth, fillWidth);
+    var gridWidth = STAFF_COLUMN_WIDTH + (dateCount * cellWidth);
+    var fitWidth = availableWidth + STAFF_COLUMN_WIDTH;
+    // Too narrow for the minimum cell width: shrink the whole grid instead of scrolling sideways.
+    var scale = gridWidth > fitWidth && gridWidth > 0 ? Math.max(0, fitWidth) / gridWidth : 1;
     grid.style.setProperty("--roster-cell-width", cellWidth + "px");
-    grid.style.setProperty("--roster-grid-width", (STAFF_COLUMN_WIDTH + (dateCount * cellWidth)) + "px");
+    grid.style.setProperty("--roster-grid-width", gridWidth + "px");
+    grid.style.setProperty("--roster-scale", String(scale));
+    grid.dataset.gridScale = scale.toFixed(4);
+  }
+
+  // Temporary tuning aid: shows the grid scale while the window is resized.
+  function showScaleReadout(root) {
+    var doc = root.ownerDocument;
+    var grid = root.querySelector(".roster-grid");
+    if (!grid) {
+      return;
+    }
+    var readout = doc.getElementById("scale-readout");
+    if (!readout) {
+      readout = doc.createElement("div");
+      readout.id = "scale-readout";
+      readout.className = "scale-readout";
+      readout.setAttribute("aria-hidden", "true");
+      doc.body.appendChild(readout);
+    }
+    readout.textContent = "Scale " + Number(grid.dataset.gridScale || 1).toFixed(2) + " · " + doc.defaultView.innerWidth + "px wide";
+    readout.classList.add("visible");
+    clearTimeout(scaleReadoutTimer);
+    scaleReadoutTimer = setTimeout(function () {
+      readout.classList.remove("visible");
+    }, 2000);
   }
 
   function restoreGridScroll(root, scrollTop, scrollLeft, previousViewKey) {

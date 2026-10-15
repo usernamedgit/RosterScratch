@@ -26,7 +26,6 @@
 body {
   margin: 0;
   height: 100vh;
-  min-width: 980px;
   overflow: hidden;
   background:
     linear-gradient(180deg, rgba(0, 217, 255, 0.08), transparent 300px),
@@ -456,6 +455,7 @@ textarea:focus {
 .roster-grid {
   width: var(--roster-grid-width, 100%);
   min-width: 100%;
+  zoom: var(--roster-scale, 1);
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
@@ -1626,4 +1626,24 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.scale-readout {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 200;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-strong);
+  color: var(--accent-3);
+  font: 600 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+.scale-readout.visible {
+  opacity: 1;
 }

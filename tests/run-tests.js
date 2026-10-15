@@ -375,7 +375,7 @@ function testDateViewControlsAndVisibleDatesRender() {
 
   Render.render(root, state, {});
   assert.ok(root.innerHTML.includes('data-view-mode="full" aria-pressed="true"'));
-  assert.ok(root.innerHTML.includes("Scroll sideways to view the full period"));
+  assert.ok(root.innerHTML.includes("Scaled to fit the window"));
   assert.equal((root.innerHTML.match(/class="date-head"/g) || []).length, 20);
 
   plan.display.dateViewMode = "week";
