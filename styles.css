@@ -635,11 +635,43 @@ textarea:focus {
 
 .staff-row {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: auto 1fr auto;
   gap: 6px;
   align-items: center;
   min-height: 58px;
   padding: 6px;
+}
+
+.staff-drag-handle {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 34px;
+  color: var(--muted);
+  font-weight: 800;
+  letter-spacing: -3px;
+  cursor: grab;
+  user-select: none;
+}
+
+.staff-drag-handle:hover {
+  color: var(--accent);
+}
+
+.staff-drag-handle:active {
+  cursor: grabbing;
+}
+
+.roster-grid tr.staff-dragging > * {
+  opacity: 0.4;
+}
+
+.roster-grid tr.staff-drop-before > * {
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.roster-grid tr.staff-drop-after > * {
+  box-shadow: inset 0 -3px 0 var(--accent);
 }
 
 .staff-name {
@@ -1443,6 +1475,10 @@ textarea:focus {
   .roster-grid {
     width: 100%;
     box-shadow: none;
+  }
+
+  .staff-drag-handle {
+    visibility: hidden;
   }
 
   .cell,

@@ -359,10 +359,10 @@
         escapeHtml(date.toLocaleDateString("en-AU", { day: "2-digit", month: "short", timeZone: "UTC" })) +
         "</span></button></th>";
     }).join("") + "</tr></thead>";
-    var body = "<tbody>" + plan.staff.map(function (staff, staffIndex) {
+    var body = "<tbody>" + plan.staff.map(function (staff) {
       var rowFocused = focusedStaffId === staff.id;
       return "<tr" + (rowFocused ? " class=\"staff-focused\"" : "") + " data-staff-row=\"" + attr(staff.id) + "\">" +
-        renderStaffCell(staff, staffIndex, plan.staff.length, rowFocused) +
+        renderStaffCell(staff, rowFocused) +
         dates.map(function (dateKey) {
           return renderRosterCell(plan, state, validation, staff, dateKey);
         }).join("") + "</tr>";
@@ -400,13 +400,12 @@
       end.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   }
 
-  function renderStaffCell(staff, index, total, focused) {
+  function renderStaffCell(staff, focused) {
     return "<th class=\"staff-cell\" data-staff-focus-target=\"true\" data-staff-id=\"" + attr(staff.id) +
       "\" aria-label=\"" + attr((focused ? "Disable focus for " : "Focus row for ") + staff.name) +
       "\" title=\"Click the surrounding cell to " + (focused ? "disable row focus" : "focus this row") + "\"><div class=\"staff-row\">" +
+      "<span class=\"staff-drag-handle\" draggable=\"true\" data-staff-drag=\"" + attr(staff.id) + "\" title=\"Drag to reorder\" aria-hidden=\"true\">⋮⋮</span>" +
       "<input class=\"staff-name\" data-action=\"rename-staff\" data-focus-key=\"staff-name-" + attr(staff.id) + "\" data-staff-id=\"" + attr(staff.id) + "\" value=\"" + attr(staff.name) + "\" aria-label=\"Staff name\">" +
-      "<button class=\"icon-button\" data-action=\"staff-up\" data-staff-id=\"" + attr(staff.id) + "\" title=\"Move up\" " + disabled(index === 0) + ">^</button>" +
-      "<button class=\"icon-button\" data-action=\"staff-down\" data-staff-id=\"" + attr(staff.id) + "\" title=\"Move down\" " + disabled(index === total - 1) + ">v</button>" +
       "<button class=\"icon-button\" data-action=\"delete-staff\" data-staff-id=\"" + attr(staff.id) + "\" title=\"Delete staff\">X</button>" +
       "</div></th>";
   }
@@ -586,6 +585,7 @@
       helpAction("Drag", "Move an existing item to another cell. Hold Option (Mac) or Ctrl (Windows) while dropping to copy it. Pattern items move together.") +
       helpAction("Delete / Backspace", "Remove the selected item, or clear the selected cell. Double-click an item to edit just that item.") +
       helpAction("Copy / Paste", "Use Cmd/Ctrl+C and Cmd/Ctrl+V with a selected cell to reuse its contents.") +
+      helpAction("Reorder staff", "Drag the grip beside a staff name up or down. Shifts and locks stay with that person.") +
       helpAction("Lock", "Use the padlock in the lower-right of a cell to prevent editing, dragging, clearing or structural changes.") +
       "</ul></section>" +
       "<section class=\"help-card\"><div class=\"help-card-heading\"><span class=\"help-card-icon\">⌨</span><div><h3>Shift shorthand</h3><p>Times are parsed as you type.</p></div></div>" +
@@ -700,7 +700,7 @@
     });
     root.querySelectorAll("[data-staff-focus-target]").forEach(function (cell) {
       cell.addEventListener("click", function (event) {
-        if (event.target.closest("input, button")) {
+        if (event.target.closest("input, button, .staff-drag-handle")) {
           return;
         }
         actions.toggleStaffFocus(cell.dataset.staffId);
@@ -716,6 +716,43 @@
       helpClose.focus();
     }
 
+    root.querySelectorAll("[data-staff-row]").forEach(function (row) {
+      row.addEventListener("dragover", function (event) {
+        if (!isStaffDrag(event)) {
+          return;
+        }
+        event.preventDefault();
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = "move";
+        }
+        var after = isLowerHalf(row, event);
+        root.querySelectorAll(".staff-drop-before, .staff-drop-after").forEach(function (other) {
+          if (other !== row) {
+            clearStaffDropIndicator(other);
+          }
+        });
+        row.classList.toggle("staff-drop-before", !after);
+        row.classList.toggle("staff-drop-after", after);
+      });
+      row.addEventListener("dragleave", function (event) {
+        var rect = row.getBoundingClientRect();
+        if (event.clientY < rect.top || event.clientY >= rect.bottom || event.clientX < rect.left || event.clientX >= rect.right) {
+          clearStaffDropIndicator(row);
+        }
+      });
+      row.addEventListener("drop", function (event) {
+        if (!isStaffDrag(event)) {
+          return;
+        }
+        event.preventDefault();
+        var payload = DragDrop.getPayload(event);
+        var beforeRow = isLowerHalf(row, event) ? row.nextElementSibling : row;
+        clearStaffDropClasses(root);
+        DragDrop.clearPayload();
+        actions.moveStaff(payload.staffId, beforeRow ? beforeRow.dataset.staffRow : null);
+      });
+    });
+
     root.querySelectorAll("[data-cell]").forEach(function (cell) {
       cell.addEventListener("click", function () {
         actions.selectCell(cell.dataset.staffId, cell.dataset.date);
@@ -724,6 +761,9 @@
         actions.startEditCell(cell.dataset.staffId, cell.dataset.date);
       });
       cell.addEventListener("dragover", function (event) {
+        if (isStaffDrag(event)) {
+          return;
+        }
         event.preventDefault();
         if (cell.dataset.locked === "true") {
           cell.classList.add("locked-drop-target");
@@ -749,6 +789,9 @@
         cell.classList.remove("locked-drop-target");
       });
       cell.addEventListener("drop", function (event) {
+        if (isStaffDrag(event)) {
+          return;
+        }
         event.preventDefault();
         var payload = DragDrop.getPayload(event);
         var copyDrop = isCopyItemDrop(event, payload);
@@ -769,6 +812,18 @@
 
     root.querySelectorAll("[draggable='true']").forEach(function (element) {
       element.addEventListener("dragstart", function (event) {
+        if (element.dataset.staffDrag) {
+          DragDrop.setPayload(event, { type: "staff", staffId: element.dataset.staffDrag, label: "Staff" });
+          var sourceRow = element.closest("[data-staff-row]");
+          var sourceCell = element.closest(".staff-cell");
+          if (event.dataTransfer && event.dataTransfer.setDragImage && sourceCell) {
+            event.dataTransfer.setDragImage(sourceCell, 16, sourceCell.offsetHeight / 2);
+          }
+          if (sourceRow) {
+            sourceRow.classList.add("staff-dragging");
+          }
+          return;
+        }
         if (element.dataset.itemId) {
           DragDrop.setPayload(event, { type: "item", itemId: element.dataset.itemId });
           actions.beginItemDrag(element.dataset.itemId);
@@ -790,6 +845,11 @@
         updatePaletteDragPosition(root, event);
       });
       element.addEventListener("dragend", function () {
+        if (element.dataset.staffDrag) {
+          clearStaffDropClasses(root);
+          DragDrop.clearPayload();
+          return;
+        }
         var shouldClosePalette = root.dataset.paletteClosedByDrag === "true";
         root.classList.remove("palette-dragging");
         root.classList.remove("palette-dragging-outside");
@@ -973,6 +1033,28 @@
     }
   }
 
+  function isStaffDrag(event) {
+    var payload = DragDrop.getPayload(event);
+    return !!(payload && payload.type === "staff");
+  }
+
+  function isLowerHalf(row, event) {
+    var rect = row.getBoundingClientRect();
+    return event.clientY > rect.top + rect.height / 2;
+  }
+
+  function clearStaffDropIndicator(row) {
+    row.classList.remove("staff-drop-before");
+    row.classList.remove("staff-drop-after");
+  }
+
+  function clearStaffDropClasses(root) {
+    root.querySelectorAll("[data-staff-row]").forEach(function (row) {
+      clearStaffDropIndicator(row);
+      row.classList.remove("staff-dragging");
+    });
+  }
+
   function isCopyItemDrop(event, payload) {
     return !!(payload && payload.type === "item" && (event.ctrlKey || event.altKey));
   }
@@ -1010,8 +1092,6 @@
     "export-palette": function (element, state, actions) { actions.exportPalette(); },
     "import-palette": function (element, state, actions) { actions.importPalette(); },
     "palette-group": function (element, state, actions) { actions.setPaletteGroupBy(element.dataset.groupBy); },
-    "staff-up": function (element, state, actions) { actions.reorderStaff(element.dataset.staffId, -1); },
-    "staff-down": function (element, state, actions) { actions.reorderStaff(element.dataset.staffId, 1); },
     "delete-staff": function (element, state, actions) { actions.deleteStaff(element.dataset.staffId); },
     "delete-item": function (element, state, actions) { actions.deleteItem(element.dataset.itemId); },
     "remove-call": function (element, state, actions) { actions.removeCall(element.dataset.itemId); },

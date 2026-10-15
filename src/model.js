@@ -239,18 +239,28 @@
     return removed;
   }
 
-  function reorderStaff(plan, staffId, direction) {
+  function moveStaff(plan, staffId, beforeStaffId) {
     var index = plan.staff.findIndex(function (staff) { return staff.id === staffId; });
-    if (index === -1) {
-      return;
+    if (index === -1 || staffId === beforeStaffId) {
+      return false;
     }
-    var nextIndex = Math.max(0, Math.min(plan.staff.length - 1, index + direction));
-    if (nextIndex === index) {
-      return;
+    var targetIndex = plan.staff.length;
+    if (beforeStaffId) {
+      targetIndex = plan.staff.findIndex(function (staff) { return staff.id === beforeStaffId; });
+      if (targetIndex === -1) {
+        return false;
+      }
+    }
+    if (targetIndex > index) {
+      targetIndex -= 1;
+    }
+    if (targetIndex === index) {
+      return false;
     }
     var staff = plan.staff.splice(index, 1)[0];
-    plan.staff.splice(nextIndex, 0, staff);
+    plan.staff.splice(targetIndex, 0, staff);
     touch(plan);
+    return true;
   }
 
   function getStaff(plan, staffId) {
@@ -815,7 +825,7 @@
     addStaff: addStaff,
     renameStaff: renameStaff,
     deleteStaff: deleteStaff,
-    reorderStaff: reorderStaff,
+    moveStaff: moveStaff,
     getStaff: getStaff,
     getItem: getItem,
     getCellItems: getCellItems,
