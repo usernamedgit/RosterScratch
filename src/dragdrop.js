@@ -13,7 +13,8 @@
   function setPayload(event, payload) {
     fallbackPayload = payload;
     if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = payload && payload.type === "item" ? "all" : "copy";
+      event.dataTransfer.effectAllowed = payload && payload.type === "item" ? "all" :
+        payload && payload.type === "staff" ? "move" : "copy";
       event.dataTransfer.setData(MIME, JSON.stringify(payload));
       event.dataTransfer.setData("text/plain", payload.text || payload.label || payload.type);
     }

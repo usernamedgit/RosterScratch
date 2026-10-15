@@ -51,7 +51,7 @@
     redo: function () { history.redo(); },
     addStaff: addStaff,
     renameStaff: renameStaff,
-    reorderStaff: reorderStaff,
+    moveStaff: moveStaff,
     deleteStaff: deleteStaff,
     openStaffImport: function () { state.modal = { type: "staff-import", text: "" }; render(); },
     chooseStaffFile: function () { staffInput.click(); },
@@ -413,9 +413,9 @@
     });
   }
 
-  function reorderStaff(staffId, direction) {
+  function moveStaff(staffId, beforeStaffId) {
     history.execute("Reorder staff", function (plan) {
-      Model.reorderStaff(plan, staffId, direction);
+      Model.moveStaff(plan, staffId, beforeStaffId);
     });
   }
 

@@ -593,6 +593,96 @@ function testStaffRowFocusRenders() {
   assert.equal((root.innerHTML.match(/class="staff-focused"/g) || []).length, 0);
 }
 
+function testMoveStaffReordersWithoutTouchingShifts() {
+  let plan = Model.createPlan({
+    dateStart: "2026-07-06",
+    dateEnd: "2026-07-07",
+    staffNames: ["Alex", "Blake", "Casey", "Dana"]
+  });
+  const ids = plan.staff.map((staff) => staff.id);
+  const [alex, blake, casey, dana] = ids;
+  const order = () => plan.staff.map((staff) => staff.name);
+
+  Model.addItemFromText(plan, blake, "2026-07-06", "8 GEN ED");
+  Model.addItemFromText(plan, blake, "2026-07-07", "630 CT ED");
+  Model.setCellLocked(plan, blake, "2026-07-06", true);
+  const itemsBefore = JSON.stringify(plan.items);
+  const locksBefore = JSON.stringify(plan.lockedCells);
+
+  assert.equal(Model.moveStaff(plan, blake, null), true, "locked staff can move");
+  assert.deepEqual(order(), ["Alex", "Casey", "Dana", "Blake"]);
+  assert.equal(JSON.stringify(plan.items), itemsBefore, "items unchanged by reorder");
+  assert.equal(JSON.stringify(plan.lockedCells), locksBefore, "locks unchanged by reorder");
+
+  assert.equal(Model.moveStaff(plan, blake, alex), true);
+  assert.deepEqual(order(), ["Blake", "Alex", "Casey", "Dana"]);
+  assert.equal(Model.moveStaff(plan, alex, dana), true);
+  assert.deepEqual(order(), ["Blake", "Casey", "Alex", "Dana"]);
+  assert.equal(Model.moveStaff(plan, blake, dana), true, "move down into the middle");
+  assert.deepEqual(order(), ["Casey", "Alex", "Blake", "Dana"]);
+
+  plan.meta.updatedAt = "unchanged";
+  assert.equal(Model.moveStaff(plan, alex, blake), false, "already directly before target");
+  assert.equal(Model.moveStaff(plan, alex, alex), false);
+  assert.equal(Model.moveStaff(plan, dana, null), false, "already last");
+  assert.equal(Model.moveStaff(plan, "missing", alex), false);
+  assert.equal(Model.moveStaff(plan, alex, "missing"), false);
+  assert.deepEqual(order(), ["Casey", "Alex", "Blake", "Dana"]);
+  assert.equal(plan.meta.updatedAt, "unchanged");
+
+  const history = new History.PlanHistory(
+    () => plan,
+    (next) => { plan = Model.normalizePlan(next); },
+    () => {}
+  );
+  history.execute("Reorder staff", (draft) => { Model.moveStaff(draft, dana, casey); });
+  assert.deepEqual(order(), ["Dana", "Casey", "Alex", "Blake"]);
+  history.undo();
+  assert.deepEqual(order(), ["Casey", "Alex", "Blake", "Dana"]);
+  assert.equal(history.execute("Reorder staff", (draft) => { Model.moveStaff(draft, dana, null); }), false,
+    "no-op reorder adds no undo entry");
+}
+
+function testStaffDragHandleRenders() {
+  const plan = Model.createPlan({
+    dateStart: "2026-07-06",
+    dateEnd: "2026-07-06",
+    staffNames: ["Alex", "Blake"]
+  });
+  const root = {
+    innerHTML: "",
+    querySelectorAll: () => [],
+    querySelector: () => null
+  };
+
+  Render.render(root, {
+    plan,
+    validation: Validation.validatePlan(plan),
+    canUndo: false,
+    canRedo: false
+  }, {});
+
+  const handles = root.innerHTML.match(/<span class="staff-drag-handle" draggable="true" data-staff-drag="[^"]+"/g) || [];
+  assert.equal(handles.length, 2);
+  assert.ok(root.innerHTML.includes('data-staff-drag="' + plan.staff[0].id + '"'));
+  assert.ok(!root.innerHTML.includes('data-action="staff-up"'));
+  assert.ok(!root.innerHTML.includes('data-action="staff-down"'));
+
+  const event = {
+    dataTransfer: {
+      effectAllowed: "",
+      data: {},
+      setData(type, value) {
+        this.data[type] = value;
+      }
+    }
+  };
+  DragDrop.setPayload(event, { type: "staff", staffId: plan.staff[0].id });
+  assert.equal(event.dataTransfer.effectAllowed, "move");
+  assert.deepEqual(DragDrop.getPayload({ dataTransfer: { getData: () => "" } }), { type: "staff", staffId: plan.staff[0].id });
+  DragDrop.clearPayload();
+}
+
 function testDaySummaryRendersChronologically() {
   const plan = Model.createPlan({
     dateStart: "2026-07-06",
@@ -837,6 +927,8 @@ testHelpGuideRenders();
 testPaletteGroupingRenders();
 testRosterModalityClassesRender();
 testStaffRowFocusRenders();
+testMoveStaffReordersWithoutTouchingShifts();
+testStaffDragHandleRenders();
 testDaySummaryRendersChronologically();
 testModalityDistributionModalUsesDisplayedDates();
 testCellLocksGuardDirectChanges();
