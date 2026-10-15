@@ -95,11 +95,9 @@
       if (time.hour >= 13 && time.hour <= 18) {
         return String(time.hour - 12);
       }
-      if (time.hour === 8) {
-        return "8";
-      }
-      if (time.hour === 12) {
-        return "12";
+      if (time.hour >= 1 && time.hour <= 6) {
+        // A bare 1-6 is read back as an afternoon start, so keep early starts explicit.
+        return pad2(time.hour) + "00";
       }
       return String(time.hour);
     }
@@ -128,8 +126,9 @@
     if (hours == null || Number.isNaN(Number(hours))) {
       return "";
     }
-    var whole = Math.floor(hours);
-    var minutes = Math.round((hours - whole) * 60);
+    var totalMinutes = Math.round(hours * 60);
+    var whole = Math.floor(totalMinutes / 60);
+    var minutes = totalMinutes % 60;
     if (minutes === 0) {
       return whole + "h";
     }
@@ -185,7 +184,7 @@
         raw: original,
         label: plainMarker.label,
         marker: plainMarker.label,
-        call: plainMarker.onCallOnly ? { enabled: true, text: plainMarker.label } : call,
+        call: plainMarker.onCallOnly ? { enabled: true, text: plainMarker.label } : { enabled: false },
         onCallOnly: !!plainMarker.onCallOnly
       };
     }

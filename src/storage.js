@@ -100,7 +100,7 @@
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(url);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 0);
   }
 
   function readFileAsText(file) {
