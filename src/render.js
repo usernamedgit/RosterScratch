@@ -272,7 +272,35 @@
       "<section class=\"day-summary\" role=\"region\" aria-label=\"Shift summary for " + attr(title) + "\">" +
       "<header class=\"day-summary-header\"><div><h2>" + escapeHtml(title) + "</h2><span>" + shifts.length + (shifts.length === 1 ? " shift" : " shifts") + "</span></div>" +
       "<button class=\"icon-button\" data-action=\"close-day-summary\" title=\"Close daily summary\" aria-label=\"Close daily summary\">X</button></header>" +
-      list + "</section></div>";
+      renderDayFteField(plan, state, dateKey) + list + "</section></div>";
+  }
+
+  function renderAvailableCounter(plan, dateKey) {
+    var available = Model.availableFte(plan, dateKey);
+    if (available === null) {
+      return "";
+    }
+    var onLeave = Model.countStaffOnLeave(plan, dateKey);
+    var title = "Available staff: " + formatFte(Model.getDayFte(plan, dateKey)) + " FTE less " + onLeave + " on leave";
+    return "<span class=\"date-fte" + (available < 0 ? " short" : "") + "\" title=\"" + attr(title) + "\" aria-label=\"" + attr(title + " = " + formatFte(available)) + "\">" +
+      escapeHtml(formatFte(available)) + "</span>";
+  }
+
+  function formatFte(value) {
+    return String(Math.round(value * 100) / 100);
+  }
+
+  function renderDayFteField(plan, state, dateKey) {
+    var fte = Model.getDayFte(plan, dateKey);
+    var draft = state.dayFteDraft && state.dayFteDraft.date === dateKey ? state.dayFteDraft.value : null;
+    var onLeave = Model.countStaffOnLeave(plan, dateKey);
+    var available = Model.availableFte(plan, dateKey);
+    var result = available === null ?
+      "<span class=\"day-fte-result muted\">" + onLeave + " on RDO/ADO/AL</span>" :
+      "<span class=\"day-fte-result" + (available < 0 ? " short" : "") + "\">" + onLeave + " on RDO/ADO/AL · Available: <strong>" + escapeHtml(formatFte(available)) + "</strong></span>";
+    return "<div class=\"day-fte\"><label class=\"day-fte-label\" for=\"day-fte-input\">FTE available</label>" +
+      "<input id=\"day-fte-input\" class=\"day-fte-input\" type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" data-action=\"set-day-fte\" data-date=\"" + attr(dateKey) +
+      "\" value=\"" + attr(draft !== null ? draft : fte === null ? "" : formatFte(fte)) + "\" placeholder=\"Optional\">" + result + "</div>";
   }
 
   function shiftStartSort(item) {
@@ -366,7 +394,7 @@
         escapeHtml(date.toLocaleDateString("en-AU", { weekday: "short", timeZone: "UTC" })) +
         "</span><span class=\"date-num\">" +
         escapeHtml(date.toLocaleDateString("en-AU", { day: "2-digit", month: "short", timeZone: "UTC" })) +
-        "</span></button></th>";
+        "</span>" + renderAvailableCounter(plan, dateKey) + "</button></th>";
     }).join("") + "</tr></thead>";
     var body = "<tbody>" + plan.staff.map(function (staff) {
       var rowFocused = focusedStaffId === staff.id;
@@ -622,6 +650,7 @@
       "<ul class=\"help-feature-list\">" +
       "<li><strong>Palette <span class=\"key-cap\">`</span></strong> — drag saved or recent shifts, markers and multi-day patterns. Use <strong>+</strong> to promote a recent shift.</li>" +
       "<li><strong>Full period / Week / Selected days</strong> — switch grid scope; click a date heading for its daily shift summary, or drag across date headings to show just those days.</li>" +
+      "<li><strong>Available staff</strong> — type the day's FTE into its daily summary; the date heading then shows that figure less the people on RDO, ADO or AL. Clear the box to hide it.</li>" +
       "<li><strong>Distribution</strong> — compare each staff member's weekday modality mix for the dates on screen.</li>" +
       "<li><strong>Warnings</strong> — the bottom strip flags overlaps, short rest gaps and unusual multiple shifts.</li>" +
       "<li><strong>Undo / Redo</strong> — use the buttons or Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z.</li>" +
@@ -723,6 +752,20 @@
 
     root.querySelectorAll("input[data-action='rename-plan']").forEach(function (input) {
       input.addEventListener("change", function () { actions.renamePlan(input.value); });
+    });
+    root.querySelectorAll("input[data-action='set-day-fte']").forEach(function (input) {
+      // The figure is held as a draft while typing and saved when the pane closes or on Enter,
+      // so re-rendering on blur cannot swallow the click that closes the pane.
+      input.addEventListener("input", function () { actions.draftDayFte(input.dataset.date, input.value); });
+      input.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          actions.commitDayFte();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          actions.closeDaySummary();
+        }
+      });
     });
     root.querySelectorAll("input[data-action='rename-staff']").forEach(function (input) {
       input.addEventListener("change", function () { actions.renameStaff(input.dataset.staffId, input.value); });

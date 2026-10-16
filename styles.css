@@ -492,6 +492,7 @@ textarea:focus {
 }
 
 .date-head {
+  position: relative;
   display: grid;
   gap: 2px;
   width: 100%;
@@ -544,6 +545,27 @@ textarea:focus {
   font-size: 12px;
 }
 
+.date-fte {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(93, 242, 168, 0.14);
+  color: var(--good);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.date-fte.short {
+  background: rgba(255, 105, 120, 0.18);
+  color: var(--danger);
+}
+
 .day-summary-overlay {
   position: fixed;
   inset: calc(var(--command-bar-height) + 62px) 24px auto;
@@ -585,6 +607,38 @@ textarea:focus {
 .day-summary-header span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.day-fte {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.day-fte-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.day-fte-input {
+  width: 84px;
+  padding: 5px 8px;
+}
+
+.day-fte-result {
+  font-size: 13px;
+}
+
+.day-fte-result.muted {
+  color: var(--muted);
+}
+
+.day-fte-result.short strong {
+  color: var(--danger);
 }
 
 .day-summary-list {
