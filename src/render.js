@@ -20,6 +20,8 @@
   var latestPlan = null;
   var resizeWatcherBound = false;
   var suppressSummaryClick = false;
+  // Cell under the cursor; kept across re-renders so a drop doesn't blank the highlight.
+  var crosshair = null;
   var scaleReadoutTimer = 0;
 
   function render(root, state, actions) {
@@ -752,6 +754,7 @@
     });
 
     wireDateRangeDrag(root, actions);
+    wireCrosshair(root);
 
     root.querySelectorAll("input[data-action='rename-plan']").forEach(function (input) {
       input.addEventListener("change", function () { actions.renamePlan(input.value); });
@@ -1076,6 +1079,71 @@
     grid.querySelectorAll("th[data-date], td[data-cell]").forEach(function (cell) {
       var dateKey = cell.dataset.date;
       cell.classList.toggle("date-range-preview", Boolean(start) && dateKey >= start && dateKey <= end);
+    });
+  }
+
+  // Highlight the row and column of the cell under the cursor, including while dragging a shift.
+  function wireCrosshair(root) {
+    var grid = root.querySelector(".roster-grid");
+    if (!grid || !grid.addEventListener) {
+      return;
+    }
+    applyCrosshair(grid, crosshair);
+
+    function track(event) {
+      var target = event.target && event.target.closest ?
+        event.target.closest("td[data-cell], th[data-date], th.staff-cell") : null;
+      var next = target && grid.contains(target) ? {
+        staffId: target.dataset.staffId || null,
+        date: target.dataset.date || null
+      } : null;
+      if (next && event.type === "dragover" && isStaffDrag(event)) {
+        next = null;
+      }
+      if (!sameCrosshair(next, crosshair)) {
+        crosshair = next;
+        applyCrosshair(grid, crosshair);
+      }
+    }
+
+    function clear() {
+      if (crosshair) {
+        crosshair = null;
+        applyCrosshair(grid, null);
+      }
+    }
+
+    grid.addEventListener("pointerover", function (event) {
+      if (event.pointerType !== "touch") {
+        track(event);
+      }
+    });
+    grid.addEventListener("dragover", track);
+    grid.addEventListener("pointerleave", clear);
+    grid.addEventListener("dragleave", function (event) {
+      if (!event.relatedTarget || !grid.contains(event.relatedTarget)) {
+        clear();
+      }
+    });
+  }
+
+  function sameCrosshair(a, b) {
+    return a === b || Boolean(a && b && a.staffId === b.staffId && a.date === b.date);
+  }
+
+  function applyCrosshair(grid, target) {
+    grid.querySelectorAll(".crosshair-row, .crosshair-col").forEach(function (cell) {
+      cell.classList.remove("crosshair-row", "crosshair-col", "crosshair-cell");
+    });
+    if (!target) {
+      return;
+    }
+    grid.querySelectorAll("td[data-cell], th[data-date], th.staff-cell").forEach(function (cell) {
+      var inRow = Boolean(target.staffId) && cell.dataset.staffId === target.staffId;
+      var inCol = Boolean(target.date) && cell.dataset.date === target.date;
+      cell.classList.toggle("crosshair-row", inRow);
+      cell.classList.toggle("crosshair-col", inCol);
+      cell.classList.toggle("crosshair-cell", inRow && inCol);
     });
   }
 

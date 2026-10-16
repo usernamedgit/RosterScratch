@@ -818,6 +818,37 @@ textarea:focus {
   box-shadow: inset 0 -3px 0 var(--warn);
 }
 
+/* Row and column of the cell under the cursor. The tint sits behind the cell's contents. */
+.cell,
+.staff-cell,
+.roster-grid thead th[data-date] {
+  isolation: isolate;
+}
+
+.roster-grid .crosshair-row::before,
+.roster-grid .crosshair-col::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(0, 217, 255, 0.07);
+  pointer-events: none;
+}
+
+.roster-grid .crosshair-cell::before {
+  background: rgba(0, 217, 255, 0.14);
+}
+
+.roster-grid thead th.crosshair-col::before,
+.roster-grid .staff-cell.crosshair-row::before {
+  background: rgba(0, 217, 255, 0.12);
+}
+
+.roster-grid thead th.crosshair-col .date-day,
+.roster-grid .staff-cell.crosshair-row .staff-name {
+  color: var(--accent);
+}
+
 .cell-items {
   display: grid;
   gap: 3px;
@@ -1552,6 +1583,11 @@ textarea:focus {
 
   .staff-drag-handle {
     visibility: hidden;
+  }
+
+  .roster-grid .crosshair-row::before,
+  .roster-grid .crosshair-col::before {
+    display: none;
   }
 
   .cell,
