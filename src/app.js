@@ -31,6 +31,7 @@
     modal: null,
     paletteOpen: false,
     summaryDate: null,
+    dayFteDraft: null,
     toast: "",
     canUndo: false,
     canRedo: false
@@ -77,6 +78,8 @@
     selectDateRange: selectDateRange,
     toggleDaySummary: toggleDaySummary,
     closeDaySummary: closeDaySummary,
+    draftDayFte: draftDayFte,
+    commitDayFte: commitDayFte,
     toggleStaffFocus: toggleStaffFocus,
     selectCell: selectCell,
     toggleCellLock: toggleCellLock,
@@ -232,6 +235,11 @@
   }
 
   function render() {
+    if (state.dayFteDraft && state.dayFteDraft.date !== state.summaryDate) {
+      // The daily summary closed or moved on: save the FTE typed into it.
+      commitDayFte();
+      return;
+    }
     state.validation = state.validation || Validation.validatePlan(state.plan);
     Render.render(appRoot, state, actions);
   }
@@ -330,6 +338,26 @@
       state.paletteOpen = false;
     }
     render();
+  }
+
+  function draftDayFte(dateKey, value) {
+    state.dayFteDraft = { date: dateKey, value: String(value) };
+  }
+
+  function commitDayFte() {
+    var draft = state.dayFteDraft;
+    state.dayFteDraft = null;
+    if (!draft) {
+      return;
+    }
+    var next = Model.setDayFte(Model.clone(state.plan), draft.date, draft.value);
+    if (next === Model.getDayFte(state.plan, draft.date)) {
+      render();
+      return;
+    }
+    history.execute("Set available FTE", function (plan) {
+      Model.setDayFte(plan, draft.date, draft.value);
+    });
   }
 
   function closeDaySummary() {

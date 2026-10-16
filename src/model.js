@@ -154,6 +154,7 @@
       staff: [],
       items: [],
       lockedCells: [],
+      dayFte: {},
       palette: null,
       display: {
         selectedTheme: "outrun",
@@ -182,6 +183,7 @@
     normalized.dateEnd = normalized.dateEnd || addDays(normalized.dateStart, 13);
     normalized.staff = Array.isArray(normalized.staff) ? normalized.staff : [];
     normalized.items = Array.isArray(normalized.items) ? normalized.items : [];
+    normalized.dayFte = normalizeDayFte(normalized.dayFte);
     normalized.lockedCells = Array.isArray(normalized.lockedCells) ?
       normalized.lockedCells.filter(function (key, index, keys) {
         return typeof key === "string" && key && keys.indexOf(key) === index;
@@ -763,6 +765,62 @@
     return null;
   }
 
+  // Markers that take a person off the floor for the available-staff counter.
+  var LEAVE_MARKERS = ["RDO", "ADO", "AL", "Annual Leave"];
+
+  function normalizeDayFte(dayFte) {
+    var result = {};
+    Object.keys(dayFte && typeof dayFte === "object" ? dayFte : {}).forEach(function (dateKey) {
+      var value = Number(dayFte[dateKey]);
+      if (isDateKey(dateKey) && Number.isFinite(value) && value >= 0) {
+        result[dateKey] = value;
+      }
+    });
+    return result;
+  }
+
+  function getDayFte(plan, dateKey) {
+    var value = plan.dayFte ? plan.dayFte[dateKey] : undefined;
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }
+
+  // A blank or invalid value clears the day's FTE, which hides its counter.
+  function setDayFte(plan, dateKey, value) {
+    var text = String(value === null || value === undefined ? "" : value).trim();
+    var number = text === "" ? NaN : Number(text);
+    plan.dayFte = plan.dayFte || {};
+    if (!isDateKey(dateKey) || !Number.isFinite(number) || number < 0) {
+      delete plan.dayFte[dateKey];
+    } else {
+      plan.dayFte[dateKey] = Math.round(number * 100) / 100;
+    }
+    touch(plan);
+    return getDayFte(plan, dateKey);
+  }
+
+  function isLeaveItem(item) {
+    return item.kind === "marker" && LEAVE_MARKERS.indexOf(item.marker) !== -1;
+  }
+
+  // Counts people, not entries: someone with both RDO and AL that day is off once.
+  function countStaffOnLeave(plan, dateKey) {
+    var staffIds = {};
+    plan.items.forEach(function (item) {
+      if (item.date === dateKey && isLeaveItem(item) && getStaff(plan, item.staffId)) {
+        staffIds[item.staffId] = true;
+      }
+    });
+    return Object.keys(staffIds).length;
+  }
+
+  function availableFte(plan, dateKey) {
+    var fte = getDayFte(plan, dateKey);
+    if (fte === null) {
+      return null;
+    }
+    return Math.round((fte - countStaffOnLeave(plan, dateKey)) * 100) / 100;
+  }
+
   function setDateRange(plan, startKey, endKey, trim) {
     if (trim && hasLockedCellOutsideRange(plan, startKey, endKey)) {
       return false;
@@ -890,6 +948,11 @@
     updatePaletteEntry: updatePaletteEntry,
     removePaletteEntry: removePaletteEntry,
     setDateRange: setDateRange,
+    LEAVE_MARKERS: LEAVE_MARKERS,
+    getDayFte: getDayFte,
+    setDayFte: setDayFte,
+    countStaffOnLeave: countStaffOnLeave,
+    availableFte: availableFte,
     itemsOutsideRange: itemsOutsideRange,
     calculateModalityDistribution: calculateModalityDistribution,
     splitEntries: splitEntries

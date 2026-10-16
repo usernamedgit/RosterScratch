@@ -795,6 +795,70 @@ function testDaySummaryRendersChronologically() {
   assert.ok(root.innerHTML.indexOf("0800–1600 CT ED") < root.innerHTML.indexOf("1200–2000 GEN"));
 }
 
+function testAvailableFteCountsStaffOnLeave() {
+  const plan = Model.createPlan({
+    dateStart: "2026-07-06",
+    dateEnd: "2026-07-07",
+    staffNames: ["Alex", "Blake", "Casey", "Drew"]
+  });
+  const day = "2026-07-06";
+  Model.addItemFromText(plan, plan.staff[0].id, day, "RDO", {});
+  Model.addItemFromText(plan, plan.staff[0].id, day, "AL", {});
+  Model.addItemFromText(plan, plan.staff[1].id, day, "8-12 AL", {});
+  Model.addItemFromText(plan, plan.staff[2].id, day, "Annual Leave", {});
+  Model.addItemFromText(plan, plan.staff[3].id, day, "Training", {});
+  Model.addItemFromText(plan, plan.staff[3].id, day, "8 GEN", {});
+  Model.addItemFromText(plan, plan.staff[3].id, "2026-07-07", "ADO", {});
+
+  assert.equal(Model.countStaffOnLeave(plan, day), 3, "one person with RDO and AL counts once; Training does not count");
+  assert.equal(Model.availableFte(plan, day), null, "no counter until an FTE is set");
+  assert.equal(Model.setDayFte(plan, day, "7.5"), 7.5);
+  assert.equal(Model.availableFte(plan, day), 4.5);
+  Model.setDayFte(plan, "2026-07-07", "0");
+  assert.equal(Model.availableFte(plan, "2026-07-07"), -1);
+
+  const reopened = Storage.parsePlan(Storage.serializePlan(plan)).plan;
+  assert.equal(Model.getDayFte(reopened, day), 7.5, "FTE figures save with the plan");
+
+  Model.setDayFte(plan, day, "");
+  assert.equal(Model.getDayFte(plan, day), null, "clearing the box removes the figure");
+  Model.setDayFte(plan, day, "-2");
+  assert.equal(Model.getDayFte(plan, day), null, "negative FTE is ignored");
+  assert.deepEqual(Model.normalizePlan({ dayFte: { "2026-07-06": 3, bad: 2, "2026-07-08": "x" } }).dayFte, { "2026-07-06": 3 });
+}
+
+function testAvailableFteRenders() {
+  const plan = Model.createPlan({
+    dateStart: "2026-07-06",
+    dateEnd: "2026-07-07",
+    staffNames: ["Alex", "Blake"]
+  });
+  Model.addItemFromText(plan, plan.staff[0].id, "2026-07-06", "RDO", {});
+  Model.addItemFromText(plan, plan.staff[1].id, "2026-07-07", "AL", {});
+  Model.setDayFte(plan, "2026-07-06", "6");
+  Model.setDayFte(plan, "2026-07-07", "0.5");
+  const root = { innerHTML: "", querySelectorAll: () => [], querySelector: () => null };
+  const baseState = { plan, validation: Validation.validatePlan(plan), canUndo: false, canRedo: false };
+
+  Render.render(root, baseState, {});
+  assert.ok(root.innerHTML.includes('<span class="date-fte" title="Available staff: 6 FTE less 1 on leave"'));
+  assert.ok(root.innerHTML.includes(">5</span>"));
+  assert.ok(root.innerHTML.includes('class="date-fte short"'), "a short day is flagged");
+  assert.ok(!root.innerHTML.includes("day-fte-input"), "the input lives in the daily summary");
+
+  Render.render(root, Object.assign({}, baseState, { summaryDate: "2026-07-06" }), {});
+  assert.ok(root.innerHTML.includes('data-action="set-day-fte" data-date="2026-07-06" value="6"'));
+  assert.ok(root.innerHTML.includes("Available: <strong>5</strong>"));
+
+  Render.render(root, Object.assign({}, baseState, { summaryDate: "2026-07-06", dayFteDraft: { date: "2026-07-06", value: "8" } }), {});
+  assert.ok(root.innerHTML.includes('value="8"'), "a typed draft survives a re-render");
+
+  Model.setDayFte(plan, "2026-07-06", "");
+  Render.render(root, Object.assign({}, baseState, { summaryDate: "2026-07-06" }), {});
+  assert.ok(!root.innerHTML.includes('class="date-fte" title'), "no counter once the FTE is cleared");
+  assert.ok(root.innerHTML.includes("1 on RDO/ADO/AL</span>"));
+}
+
 function testModalityDistributionModalUsesDisplayedDates() {
   const plan = Model.createPlan({
     dateStart: "2026-07-06",
@@ -1010,6 +1074,8 @@ testMoveStaffReordersWithoutTouchingShifts();
 testStaffDragHandleRenders();
 testDaySummaryRendersChronologically();
 testModalityDistributionModalUsesDisplayedDates();
+testAvailableFteCountsStaffOnLeave();
+testAvailableFteRenders();
 testCellLocksGuardDirectChanges();
 testCellLocksGuardDragAndGroupedChanges();
 testCellLocksGuardPatternsAndDestructiveStructureChanges();
