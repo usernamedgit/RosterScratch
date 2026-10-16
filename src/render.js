@@ -280,10 +280,13 @@
     if (available === null) {
       return "";
     }
-    var onLeave = Model.countStaffOnLeave(plan, dateKey);
-    var title = "Available staff: " + formatFte(Model.getDayFte(plan, dateKey)) + " FTE less " + onLeave + " on leave";
+    var title = "Available staff: " + formatFte(Model.getDayFte(plan, dateKey)) + " FTE less " + formatAllocated(Model.countStaffAllocated(plan, dateKey));
     return "<span class=\"date-fte" + (available < 0 ? " short" : "") + "\" title=\"" + attr(title) + "\" aria-label=\"" + attr(title + " = " + formatFte(available)) + "\">" +
       escapeHtml(formatFte(available)) + "</span>";
+  }
+
+  function formatAllocated(counts) {
+    return counts.rostered + " rostered, " + counts.away + " on leave or away";
   }
 
   function formatFte(value) {
@@ -293,11 +296,11 @@
   function renderDayFteField(plan, state, dateKey) {
     var fte = Model.getDayFte(plan, dateKey);
     var draft = state.dayFteDraft && state.dayFteDraft.date === dateKey ? state.dayFteDraft.value : null;
-    var onLeave = Model.countStaffOnLeave(plan, dateKey);
+    var allocated = formatAllocated(Model.countStaffAllocated(plan, dateKey));
     var available = Model.availableFte(plan, dateKey);
     var result = available === null ?
-      "<span class=\"day-fte-result muted\">" + onLeave + " on RDO/ADO/AL</span>" :
-      "<span class=\"day-fte-result" + (available < 0 ? " short" : "") + "\">" + onLeave + " on RDO/ADO/AL · Available: <strong>" + escapeHtml(formatFte(available)) + "</strong></span>";
+      "<span class=\"day-fte-result muted\">" + allocated + "</span>" :
+      "<span class=\"day-fte-result" + (available < 0 ? " short" : "") + "\">" + allocated + " · Available: <strong>" + escapeHtml(formatFte(available)) + "</strong></span>";
     return "<div class=\"day-fte\"><label class=\"day-fte-label\" for=\"day-fte-input\">FTE available</label>" +
       "<input id=\"day-fte-input\" class=\"day-fte-input\" type=\"number\" min=\"0\" step=\"any\" inputmode=\"decimal\" data-action=\"set-day-fte\" data-date=\"" + attr(dateKey) +
       "\" value=\"" + attr(draft !== null ? draft : fte === null ? "" : formatFte(fte)) + "\" placeholder=\"Optional\">" + result + "</div>";
@@ -650,7 +653,7 @@
       "<ul class=\"help-feature-list\">" +
       "<li><strong>Palette <span class=\"key-cap\">`</span></strong> — drag saved or recent shifts, markers and multi-day patterns. Use <strong>+</strong> to promote a recent shift.</li>" +
       "<li><strong>Full period / Week / Selected days</strong> — switch grid scope; click a date heading for its daily shift summary, or drag across date headings to show just those days.</li>" +
-      "<li><strong>Available staff</strong> — type the day's FTE into its daily summary; the date heading then shows that figure less the people on RDO, ADO or AL. Clear the box to hide it.</li>" +
+      "<li><strong>Available staff</strong> — type the day's FTE into its daily summary; the date heading then shows that figure less everyone rostered, on leave or away that day (On Call alone doesn't count). Clear the box to hide it.</li>" +
       "<li><strong>Distribution</strong> — compare each staff member's weekday modality mix for the dates on screen.</li>" +
       "<li><strong>Warnings</strong> — the bottom strip flags overlaps, short rest gaps and unusual multiple shifts.</li>" +
       "<li><strong>Undo / Redo</strong> — use the buttons or Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z.</li>" +

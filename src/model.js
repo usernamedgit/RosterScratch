@@ -765,9 +765,6 @@
     return null;
   }
 
-  // Markers that take a person off the floor for the available-staff counter.
-  var LEAVE_MARKERS = ["RDO", "ADO", "AL", "Annual Leave"];
-
   function normalizeDayFte(dayFte) {
     var result = {};
     Object.keys(dayFte && typeof dayFte === "object" ? dayFte : {}).forEach(function (dateKey) {
@@ -798,19 +795,24 @@
     return getDayFte(plan, dateKey);
   }
 
-  function isLeaveItem(item) {
-    return item.kind === "marker" && LEAVE_MARKERS.indexOf(item.marker) !== -1;
-  }
-
-  // Counts people, not entries: someone with both RDO and AL that day is off once.
-  function countStaffOnLeave(plan, dateKey) {
-    var staffIds = {};
+  // Who is already taken on a day, counting people rather than entries: a split shift is one
+  // person, and anyone with a marker (RDO, AL, Training...) is away. On Call alone and notes don't count.
+  function countStaffAllocated(plan, dateKey) {
+    var rostered = {};
+    var away = {};
     plan.items.forEach(function (item) {
-      if (item.date === dateKey && isLeaveItem(item) && getStaff(plan, item.staffId)) {
-        staffIds[item.staffId] = true;
+      if (item.date !== dateKey || !getStaff(plan, item.staffId)) {
+        return;
+      }
+      if (item.kind === "shift") {
+        rostered[item.staffId] = true;
+      } else if (item.kind === "marker") {
+        away[item.staffId] = true;
       }
     });
-    return Object.keys(staffIds).length;
+    var awayCount = Object.keys(away).filter(function (staffId) { return !rostered[staffId]; }).length;
+    var rosteredCount = Object.keys(rostered).length;
+    return { rostered: rosteredCount, away: awayCount, total: rosteredCount + awayCount };
   }
 
   function availableFte(plan, dateKey) {
@@ -818,7 +820,7 @@
     if (fte === null) {
       return null;
     }
-    return Math.round((fte - countStaffOnLeave(plan, dateKey)) * 100) / 100;
+    return Math.round((fte - countStaffAllocated(plan, dateKey).total) * 100) / 100;
   }
 
   function setDateRange(plan, startKey, endKey, trim) {
@@ -948,10 +950,9 @@
     updatePaletteEntry: updatePaletteEntry,
     removePaletteEntry: removePaletteEntry,
     setDateRange: setDateRange,
-    LEAVE_MARKERS: LEAVE_MARKERS,
     getDayFte: getDayFte,
     setDayFte: setDayFte,
-    countStaffOnLeave: countStaffOnLeave,
+    countStaffAllocated: countStaffAllocated,
     availableFte: availableFte,
     itemsOutsideRange: itemsOutsideRange,
     calculateModalityDistribution: calculateModalityDistribution,
