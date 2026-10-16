@@ -74,6 +74,7 @@
     closePalette: closePalette,
     setDateViewMode: setDateViewMode,
     navigateWeek: navigateWeek,
+    selectDateRange: selectDateRange,
     toggleDaySummary: toggleDaySummary,
     closeDaySummary: closeDaySummary,
     toggleStaffFocus: toggleStaffFocus,
@@ -225,6 +226,7 @@
     if (state.summaryDate && (state.summaryDate < state.plan.dateStart || state.summaryDate > state.plan.dateEnd)) {
       state.summaryDate = null;
     }
+    clearOffscreenSelection();
     autosave();
     render();
   }
@@ -251,12 +253,16 @@
   }
 
   function setDateViewMode(mode) {
-    var next = mode === "week" ? "week" : "full";
+    var next = mode === "week" || mode === "range" ? mode : "full";
     state.plan.display = state.plan.display || {};
+    if (next === "range" && !state.plan.display.rangeStart) {
+      return;
+    }
     var changed = state.plan.display.dateViewMode !== next;
     if (next === "week") {
       var focusDate = state.summaryDate ||
         (state.selectedCell && state.selectedCell.date) ||
+        (state.plan.display.dateViewMode === "range" ? state.plan.display.rangeStart : "") ||
         state.plan.display.weekStart ||
         state.plan.dateStart;
       var weekStart = Model.weekStartForPlan(state.plan, focusDate);
@@ -267,8 +273,42 @@
       return;
     }
     state.plan.display.dateViewMode = next;
+    clearOffscreenSelection();
     autosave();
     render();
+  }
+
+  function selectDateRange(firstKey, secondKey) {
+    var start = firstKey < secondKey ? firstKey : secondKey;
+    var end = firstKey < secondKey ? secondKey : firstKey;
+    if (!Model.isDateKey(start) || !Model.isDateKey(end) || start === end) {
+      return;
+    }
+    var display = state.plan.display = state.plan.display || {};
+    display.rangeStart = start;
+    display.rangeEnd = end;
+    display.dateViewMode = "range";
+    Model.clampDateRangeView(state.plan);
+    clearOffscreenSelection();
+    autosave();
+    render();
+  }
+
+  // Drops the daily summary and cell selection when their date is no longer on screen.
+  function clearOffscreenSelection() {
+    var dates = Render.visibleRosterDates(state.plan);
+    var onScreen = function (dateKey) {
+      return dates.indexOf(dateKey) !== -1;
+    };
+    if (state.summaryDate && !onScreen(state.summaryDate)) {
+      state.summaryDate = null;
+    }
+    if (state.selectedCell && !onScreen(state.selectedCell.date)) {
+      state.selectedCell = null;
+    }
+    if (state.editCell && !onScreen(state.editCell.date)) {
+      state.editCell = null;
+    }
   }
 
   function navigateWeek(direction) {

@@ -19,6 +19,7 @@
   var latestRoot = null;
   var latestPlan = null;
   var resizeWatcherBound = false;
+  var suppressSummaryClick = false;
   var scaleReadoutTimer = 0;
 
   function render(root, state, actions) {
@@ -308,8 +309,8 @@
   function renderWorkspace(plan, state, validation) {
     var dates = visibleRosterDates(plan);
     var viewMode = getDateViewMode(plan);
-    var viewKey = viewMode === "week" ?
-      "week|" + (dates[0] || "") :
+    var viewKey = viewMode === "week" ? "week|" + (dates[0] || "") :
+      viewMode === "range" ? "range|" + plan.display.rangeStart + "|" + plan.display.rangeEnd :
       "full|" + plan.dateStart + "|" + plan.dateEnd;
     return "<main class=\"workspace\">" +
       renderDateViewToolbar(plan, dates, viewMode) +
@@ -323,11 +324,16 @@
     var modeButtons = "<div class=\"date-view-modes\" role=\"group\" aria-label=\"Roster date display\">" +
       "<button class=\"segmented-button\" data-action=\"date-view-mode\" data-view-mode=\"full\" aria-pressed=\"" + (viewMode === "full") + "\">Full period</button>" +
       "<button class=\"segmented-button\" data-action=\"date-view-mode\" data-view-mode=\"week\" aria-pressed=\"" + (viewMode === "week") + "\">Week</button>" +
+      "<button class=\"segmented-button\" data-action=\"date-view-mode\" data-view-mode=\"range\" aria-pressed=\"" + (viewMode === "range") + "\" " +
+      (hasDateRange(plan) ? "title=\"Show the days last picked by dragging across date headings\"" : "title=\"Drag across date headings to pick days\" disabled") + ">Selected days</button>" +
       "</div>";
-    if (viewMode === "full") {
+    if (viewMode !== "week") {
+      var context = viewMode === "range" ?
+        escapeHtml(formatDateRange(dates[0], dates[dates.length - 1])) + " · " + dates.length + " days" :
+        allDates.length + (allDates.length === 1 ? " day" : " days");
       return "<section class=\"date-view-toolbar\" aria-label=\"Date view controls\">" +
         modeButtons +
-        "<span class=\"date-view-context\">" + allDates.length + (allDates.length === 1 ? " day" : " days") + " · Scaled to fit the window</span>" +
+        "<span class=\"date-view-context\">" + context + " · Scaled to fit the window</span>" +
         renderDistributionButton() +
         "</section>";
     }
@@ -349,12 +355,14 @@
   }
 
   function renderGrid(plan, state, validation, dates, viewMode) {
+    var headTitle = viewMode === "week" ? "Toggle daily shift summary" :
+      "Click for the daily shift summary · drag across dates to show just those days";
     var focusedStaffId = state.focusedStaffId || null;
     var gridClasses = ["roster-grid", focusedStaffId ? "staff-focus-active" : ""].filter(Boolean).join(" ");
     var head = "<thead><tr><th>Staff</th>" + dates.map(function (dateKey) {
       var date = new Date(dateKey + "T00:00:00Z");
       var expanded = state.summaryDate === dateKey;
-      return "<th><button class=\"date-head\" data-action=\"toggle-day-summary\" data-date=\"" + attr(dateKey) + "\" aria-expanded=\"" + expanded + "\" title=\"Toggle daily shift summary\"><span class=\"date-day\">" +
+      return "<th data-date=\"" + attr(dateKey) + "\"><button class=\"date-head\" data-action=\"toggle-day-summary\" data-date=\"" + attr(dateKey) + "\" aria-expanded=\"" + expanded + "\" title=\"" + headTitle + "\"><span class=\"date-day\">" +
         escapeHtml(date.toLocaleDateString("en-AU", { weekday: "short", timeZone: "UTC" })) +
         "</span><span class=\"date-num\">" +
         escapeHtml(date.toLocaleDateString("en-AU", { day: "2-digit", month: "short", timeZone: "UTC" })) +
@@ -373,7 +381,11 @@
   }
 
   function visibleRosterDates(plan) {
-    if (getDateViewMode(plan) !== "week") {
+    var mode = getDateViewMode(plan);
+    if (mode === "range") {
+      return Model.enumerateDates(plan.display.rangeStart, plan.display.rangeEnd);
+    }
+    if (mode !== "week") {
       return Model.enumerateDates(plan.dateStart, plan.dateEnd);
     }
     var display = plan.display || {};
@@ -386,7 +398,16 @@
   }
 
   function getDateViewMode(plan) {
-    return plan.display && plan.display.dateViewMode === "week" ? "week" : "full";
+    var mode = plan.display && plan.display.dateViewMode;
+    if (mode === "range" && hasDateRange(plan)) {
+      return "range";
+    }
+    return mode === "week" ? "week" : "full";
+  }
+
+  function hasDateRange(plan) {
+    var display = plan.display || {};
+    return Boolean(display.rangeStart && display.rangeEnd);
   }
 
   function formatDateRange(startKey, endKey) {
@@ -600,7 +621,7 @@
       "<section class=\"help-card\"><div class=\"help-card-heading\"><span class=\"help-card-icon\">✦</span><div><h3>Useful features</h3><p>Tools for faster planning and checking.</p></div></div>" +
       "<ul class=\"help-feature-list\">" +
       "<li><strong>Palette <span class=\"key-cap\">`</span></strong> — drag saved or recent shifts, markers and multi-day patterns. Use <strong>+</strong> to promote a recent shift.</li>" +
-      "<li><strong>Full period / Week</strong> — switch grid scope; click a date heading for its daily shift summary.</li>" +
+      "<li><strong>Full period / Week / Selected days</strong> — switch grid scope; click a date heading for its daily shift summary, or drag across date headings to show just those days.</li>" +
       "<li><strong>Distribution</strong> — compare each staff member's weekday modality mix for the dates on screen.</li>" +
       "<li><strong>Warnings</strong> — the bottom strip flags overlaps, short rest gaps and unusual multiple shifts.</li>" +
       "<li><strong>Undo / Redo</strong> — use the buttons or Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z.</li>" +
@@ -685,6 +706,11 @@
     root.querySelectorAll("[data-action]").forEach(function (element) {
       element.addEventListener("click", function (event) {
         var action = element.dataset.action;
+        if (action === "toggle-day-summary" && suppressSummaryClick) {
+          suppressSummaryClick = false;
+          event.preventDefault();
+          return;
+        }
         if (clickActions[action]) {
           event.preventDefault();
           event.stopPropagation();
@@ -692,6 +718,8 @@
         }
       });
     });
+
+    wireDateRangeDrag(root, actions);
 
     root.querySelectorAll("input[data-action='rename-plan']").forEach(function (input) {
       input.addEventListener("change", function () { actions.renamePlan(input.value); });
@@ -918,6 +946,91 @@
       cancel: actions.cancelPaletteEditor
     });
     wireModalFields(root, state, actions);
+  }
+
+  // Full period / Selected days: drag across date headings to show just those days.
+  function wireDateRangeDrag(root, actions) {
+    var grid = root.querySelector(".roster-grid");
+    if (!grid || grid.dataset.viewMode === "week") {
+      return;
+    }
+    var doc = root.ownerDocument;
+    grid.querySelectorAll(".date-head").forEach(function (head) {
+      head.addEventListener("pointerdown", function (event) {
+        if (event.button !== 0) {
+          return;
+        }
+        startDateRangeDrag(doc, grid, head.dataset.date, actions);
+      });
+    });
+  }
+
+  function startDateRangeDrag(doc, grid, startDate, actions) {
+    var endDate = startDate;
+    var moved = false;
+
+    function headAt(event) {
+      var target = doc.elementFromPoint(event.clientX, event.clientY);
+      var head = target && target.closest ? target.closest(".date-head") : null;
+      return head && grid.contains(head) ? head : null;
+    }
+
+    function onMove(event) {
+      var head = headAt(event);
+      if (!head || head.dataset.date === endDate) {
+        return;
+      }
+      endDate = head.dataset.date;
+      moved = moved || endDate !== startDate;
+      if (moved) {
+        showDateRangePreview(grid, startDate, endDate);
+      }
+    }
+
+    function onUp(event) {
+      var head = headAt(event);
+      finish();
+      if (!moved) {
+        return;
+      }
+      // The click that follows a drag must not toggle the daily summary.
+      suppressSummaryClick = true;
+      setTimeout(function () { suppressSummaryClick = false; }, 0);
+      if (head && head.dataset.date !== startDate) {
+        actions.selectDateRange(startDate, head.dataset.date);
+      }
+    }
+
+    function onKey(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        finish();
+      }
+    }
+
+    function finish() {
+      doc.removeEventListener("pointermove", onMove);
+      doc.removeEventListener("pointerup", onUp);
+      doc.removeEventListener("pointercancel", finish);
+      doc.removeEventListener("keydown", onKey, true);
+      showDateRangePreview(grid, null, null);
+    }
+
+    doc.addEventListener("pointermove", onMove);
+    doc.addEventListener("pointerup", onUp);
+    doc.addEventListener("pointercancel", finish);
+    doc.addEventListener("keydown", onKey, true);
+  }
+
+  function showDateRangePreview(grid, firstKey, secondKey) {
+    var start = firstKey && secondKey && firstKey > secondKey ? secondKey : firstKey;
+    var end = firstKey && secondKey && firstKey > secondKey ? firstKey : secondKey;
+    grid.classList.toggle("date-range-dragging", Boolean(start));
+    grid.querySelectorAll("th[data-date], td[data-cell]").forEach(function (cell) {
+      var dateKey = cell.dataset.date;
+      cell.classList.toggle("date-range-preview", Boolean(start) && dateKey >= start && dateKey <= end);
+    });
   }
 
   function wireInlineEditor(input, handlers) {
@@ -1349,6 +1462,7 @@
 
   return {
     render: render,
+    visibleRosterDates: visibleRosterDates,
     escapeHtml: escapeHtml
   };
 });

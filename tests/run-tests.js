@@ -395,6 +395,83 @@ function testDateViewControlsAndVisibleDatesRender() {
   assert.ok(/data-action="next-week"[^>]*disabled/.test(root.innerHTML));
 }
 
+function testSelectedDaysRangeIsClampedToThePeriod() {
+  const base = {
+    dateStart: "2026-07-06",
+    dateEnd: "2026-07-25",
+    palette: {}
+  };
+  const kept = Model.normalizePlan(Object.assign({}, base, {
+    display: { dateViewMode: "range", rangeStart: "2026-07-09", rangeEnd: "2026-07-14" }
+  }));
+  assert.equal(kept.display.dateViewMode, "range");
+  assert.equal(kept.display.rangeStart, "2026-07-09");
+  assert.equal(kept.display.rangeEnd, "2026-07-14");
+
+  const reversed = Model.normalizePlan(Object.assign({}, base, {
+    display: { dateViewMode: "range", rangeStart: "2026-07-14", rangeEnd: "2026-07-09" }
+  }));
+  assert.equal(reversed.display.rangeStart, "2026-07-09");
+  assert.equal(reversed.display.rangeEnd, "2026-07-14");
+
+  const overhanging = Model.normalizePlan(Object.assign({}, base, {
+    display: { dateViewMode: "range", rangeStart: "2026-07-01", rangeEnd: "2026-08-02" }
+  }));
+  assert.equal(overhanging.display.rangeStart, "2026-07-06");
+  assert.equal(overhanging.display.rangeEnd, "2026-07-25");
+
+  const tooShort = Model.normalizePlan(Object.assign({}, base, {
+    display: { dateViewMode: "range", rangeStart: "2026-07-25", rangeEnd: "2026-08-02" }
+  }));
+  assert.equal(tooShort.display.dateViewMode, "full");
+  assert.equal(tooShort.display.rangeStart, undefined);
+
+  const trimmed = Model.normalizePlan(Object.assign({}, base, {
+    display: { dateViewMode: "range", rangeStart: "2026-07-09", rangeEnd: "2026-07-20" }
+  }));
+  Model.setDateRange(trimmed, "2026-07-13", "2026-07-25", true);
+  assert.equal(trimmed.display.dateViewMode, "range");
+  assert.equal(trimmed.display.rangeStart, "2026-07-13");
+  assert.equal(trimmed.display.rangeEnd, "2026-07-20");
+  Model.setDateRange(trimmed, "2026-07-20", "2026-07-25", true);
+  assert.equal(trimmed.display.dateViewMode, "full");
+}
+
+function testSelectedDaysRenders() {
+  const plan = Model.createPlan({
+    dateStart: "2026-07-06",
+    dateEnd: "2026-07-25",
+    staffNames: ["Alex"]
+  });
+  const root = {
+    innerHTML: "",
+    querySelectorAll: () => [],
+    querySelector: () => null
+  };
+  const state = {
+    plan,
+    validation: Validation.validatePlan(plan),
+    canUndo: false,
+    canRedo: false
+  };
+
+  Render.render(root, state, {});
+  assert.ok(/data-view-mode="range"[^>]*disabled/.test(root.innerHTML));
+
+  plan.display.rangeStart = "2026-07-08";
+  plan.display.rangeEnd = "2026-07-17";
+  Render.render(root, state, {});
+  assert.ok(!/data-view-mode="range"[^>]*disabled/.test(root.innerHTML));
+  assert.equal((root.innerHTML.match(/class="date-head"/g) || []).length, 20);
+
+  plan.display.dateViewMode = "range";
+  Render.render(root, state, {});
+  assert.ok(root.innerHTML.includes('data-view-mode="range" aria-pressed="true"'));
+  assert.equal((root.innerHTML.match(/class="date-head"/g) || []).length, 10);
+  assert.ok(root.innerHTML.includes("8–17 July 2026 · 10 days · Scaled to fit the window"));
+  assert.deepEqual(Render.visibleRosterDates(plan), Model.enumerateDates("2026-07-08", "2026-07-17"));
+}
+
 function testPatternAddButtonRenders() {
   const plan = Model.createPlan({
     dateStart: "2026-07-06",
@@ -921,6 +998,8 @@ testPalettePatternCreation();
 testPaletteGroupingPreference();
 testDateViewPreferenceAndWeekPaging();
 testDateViewControlsAndVisibleDatesRender();
+testSelectedDaysRangeIsClampedToThePeriod();
+testSelectedDaysRenders();
 testPatternAddButtonRenders();
 testPaletteShortcutRenders();
 testHelpGuideRenders();

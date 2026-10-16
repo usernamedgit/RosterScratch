@@ -59,6 +59,33 @@
     return dates;
   }
 
+  // Keeps the "Selected days" range inside the plan period; a range under 2 days is dropped.
+  function clampDateRangeView(plan) {
+    var display = plan.display || {};
+    var start = display.rangeStart;
+    var end = display.rangeEnd;
+    if (isDateKey(start) && isDateKey(end)) {
+      if (start > end) {
+        var swap = start;
+        start = end;
+        end = swap;
+      }
+      start = start < plan.dateStart ? plan.dateStart : start;
+      end = end > plan.dateEnd ? plan.dateEnd : end;
+    }
+    if (isDateKey(start) && isDateKey(end) && daysBetween(start, end) >= 1) {
+      display.rangeStart = start;
+      display.rangeEnd = end;
+    } else {
+      delete display.rangeStart;
+      delete display.rangeEnd;
+      if (display.dateViewMode === "range") {
+        display.dateViewMode = "full";
+      }
+    }
+    return plan;
+  }
+
   function weekStartForPlan(plan, dateKey) {
     if (!plan || !plan.dateStart || !plan.dateEnd) {
       return "";
@@ -162,8 +189,10 @@
     normalized.display = normalized.display || {};
     normalized.display.selectedTheme = normalized.display.selectedTheme || "outrun";
     normalized.display.paletteGroupBy = normalized.display.paletteGroupBy === "start" ? "start" : "modality";
-    normalized.display.dateViewMode = normalized.display.dateViewMode === "week" ? "week" : "full";
+    var viewMode = normalized.display.dateViewMode;
+    normalized.display.dateViewMode = viewMode === "week" || viewMode === "range" ? viewMode : "full";
     normalized.display.weekStart = weekStartForPlan(normalized, normalized.display.weekStart);
+    clampDateRangeView(normalized);
     normalized.meta = normalized.meta || {};
     normalized.meta.nextIds = normalized.meta.nextIds || {};
     normalized.palette = normalized.palette || {};
@@ -740,6 +769,9 @@
     }
     plan.dateStart = startKey;
     plan.dateEnd = endKey;
+    if (plan.display) {
+      clampDateRangeView(plan);
+    }
     if (trim) {
       plan.items = plan.items.filter(function (item) {
         return item.date >= startKey && item.date <= endKey;
@@ -822,6 +854,7 @@
     daysBetween: daysBetween,
     enumerateDates: enumerateDates,
     weekStartForPlan: weekStartForPlan,
+    clampDateRangeView: clampDateRangeView,
     addStaff: addStaff,
     renameStaff: renameStaff,
     deleteStaff: deleteStaff,
